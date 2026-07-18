@@ -156,34 +156,77 @@ Tam formüller ve `k` katsayıları → **`COMBAT_STAT_SHEET.md`**.
 
 ### Hasar hattı (özet)
 
-Tek **Damage** statı; Physical/Magical ayrımı yok. DoT / statü → Potency + Resist kanalı.
+Tek **Damage** statı. **Matchup** (±15%): silah element → chest element; yalnızca direct + skill burst (`CHEMISTRY_ENGINE.md`). DoT / reaksiyon ayrı kanal → Potency + Resist.
 
 ---
 
-## 5. Loadout & Equipment Slots
+## 5. Loadout & Equipment Slots (kilit)
 
 ### Slotlar
 
 ```
-        [ Head ]
-[ Main Hand ]  [ Off-hand / Knot ]
+        [ Helmet ]
+[ Main Hand ]  [ Off Hand ]
         [ Chest ]
-[ Gloves ]     [ Boots ]
+[ Hand ]       [ Feet ]
 ```
 
-| Slot | İçerik |
-|------|--------|
-| **Main Hand** | 1H veya 2H silah |
-| **Off-hand** | 1H build: Shield, Focus (*TBD*), veya 1H silah / Wand / Scepter |
-| **Weapon Knot** | 2H STR veya Staff — pasif (§7) |
-| **Head / Chest / Gloves / Boots** | Zırh, stat, affix |
+| Slot (UI) | Kod adı | İçerik |
+|-----------|---------|--------|
+| **Main Hand** | `main` | **1H** veya **2H** silah |
+| **Off Hand** | `off` | **1H silah**, **Shield**, **Quiver**, **Weapon Knot**, **Focus**, **Wand/Scepter** |
+| **Helmet** | `head` | Kafa zırhı / baş ekipmanı |
+| **Chest** | `chest` | Göğüs zırhı |
+| **Hand** | `hands` | Eldiven |
+| **Feet** | `feet` | Bot |
+
+**2H melee:** Main = 2H silah · Off = **Weapon Knot** (tagsiz v1).  
+**Ranged:** Main = **Bow** veya **Crossbow** (sinerjide **×2** — 2H ile aynı) · Off = **Quiver** (tagsiz; Knot gibi pasif/stat).  
+**1H melee:** Main = 1H · Off = Shield / 1H (dual) / **Focus** / Wand-Scepter.
+
+### Yetenek slotları (kilit)
+
+Her eşya tipinin taşıyabileceği yetenek sayısı ve türü:
+
+| Kaynak | Aktif | Pasif | Not |
+|--------|-------|-------|-----|
+| **2H silah** | 2 slot | — | Her slot **aktif** veya **pasif** yetenek olabilir (toplam 2) |
+| **1H silah (main)** | 1 | 0–1 | En az **1 aktif**; bazı silahlarda yalnızca 1 aktif, pasif yok |
+| **Off — Quiver** | — | 1 veya stat | Bow / Crossbow off; **1 pasif** *veya* **stat boost** (Knot ile aynı; **element tag yok**) |
+| **Off — Shield / Focus** | 1 veya | 1 veya | **1 aktif** *veya* **1 pasif** (ikisi birden değil) |
+| **Off — Wand / Scepter** | 1 veya | 1 veya | **INT off-hand dual** — düz vuruş yok; aktif/pasif/perk **%50** (§7) |
+| **Off — Weapon Knot** | — | 1 veya stat | **1 pasif** yetenek *veya* yalnızca **stat boost** |
+| **Off — 1H silah** | Main ile aynı kurallar | | Dual wield: off-hand perk/pasif **%50**; **aktif yetenek kullanılabilir** |
+| **Helmet** | 0–1 | 0–1 | Genelde **hasar** veya **dayanıklılık** temalı aktif/pasif |
+| **Chest** | 0–1 | 0–1 | **Dayanıklılık** (Defence, DR, guard, HP vb.) |
+| **Hand** | 0–1 | 0–1 | **Hasar** (crit, dot affix, on-hit proc vb.) |
+| **Feet** | 0–1 | 0–1 | **Hız**, dodge, parry, jump, guard mekaniği |
+
+**Kaldırılan kural:** ~~Off-hand aktif yetenek kullanılamaz~~ — artık **kullanılabilir** (loadout derinliği).
 
 ### Eşya tasarım ilkesi
 
 - **Tank:** yüksek Defence, düşük Resist — *manuel item tablosu*
 - **Büyücü:** düşük Defence, yüksek Resist — *manuel*
-- **Stat requirement:** `Requires STR 40` vb. — build commitment
-- *Rarity / tier sistemi — TBD*
+- **Stat requirement:** `Requires STR 40` vb.
+- *Rarity / tier — TBD*
+
+### Element tag (kilit)
+
+Element **tag** iki katmanda kullanılır:
+
+| Katman | Slotlar | Durum |
+|--------|---------|--------|
+| **Matchup** | Main Hand → hedef Chest | Kilit — `CHEMISTRY_ENGINE.md` §2 |
+| **Sinerji** | **Main Hand + Off Hand + Chest** | Çerçeve + Pure x3 perk kilit — `CHEMISTRY_ENGINE.md` §3 |
+
+**Sinerji özeti:**
+- **Main 1H** = 1 · **Main 2H / Bow / Crossbow** = 2 · **Off** (tagli: 1H / Shield / Focus / Wand / Scepter) = 1 · **Knot / Quiver** = 0
+- **2H veya Bow/Crossbow + Chest** → sinerji **main (×2) + chest (×1)**; off Knot/Quiver sayılmaz
+- **Duality** → +5% Defence · +5% Resist (`CHEMISTRY_ENGINE.md` §3.3)
+- Reaksiyonları doğrudan güçlendirmez
+
+**On-hit status:** Hand/silah affix — değişmedi.
 
 ---
 
@@ -217,26 +260,42 @@ Hit Damage = Weapon Base × (1 + ScalingStat × 0.0075) × gear × crit
 | Silah | Scale | Perk |
 |-------|-------|------|
 | Dagger | DEX | **Backstab** — arkadan bonus hasar |
-| 1H Sword | STR | **Bleed** on-hit |
+| 1H Sword | STR | **Measured Strike** — her **3. light attack** +**%35** hasar |
 | 1H Axe | STR | Rakip **guard/parry** yaparken ekstra **Stamina** damage |
 | 1H Mace | STR | **Defence Shred** — Defence’in bir kısmını ignore |
 | Wand | INT | +Status Potency |
 | Scepter | INT | +Buff Potency; solo damage wand ile staff arası |
 | Bow | DEX | +Crit Chance |
 | Crossbow | DEX | +Crit Damage; düşük hız, vuruş arası reload **anim** (mekanik değil) |
-| 2H Sword | STR | Bleed (güçlü) |
+| 2H Sword | STR | **Measured Strike** — 3. vuruş +**%40** hasar |
 | 2H Axe | STR | Anti-guard stamina (artmış) |
 | 2H Mace | STR | Defence Shred (yüksek) |
 | Staff | INT | +Status Potency++; light attack = **projectile** |
+| **Exotic** | *değişken* | **Sabit aile perk’i yok** — tamamen item/yetenek tasarımı |
 
-INT silahları: light attack projectile.  
-*Yeni silah tipleri (Rapier vb.) — şimdilik yok.*
+**Exotic:** Özel mekanikli silahlar (ör. garip cadence, unique active). Aile perk zorunluluğu yok; denge tek tek item.
+
+INT silahları: light attack projectile.
+
+### Measured Strike (Sword ailesi — kilit)
+
+- Sayaç: **hedef başına** ayrı `light attack` zinciri.
+- Sayaç sayan vuruşlar: **isabetli** light attack **ve guard'a takılan** vuruşlar (chip dahil).
+- **Sayılmaz:** miss / whiff.
+- Son sayılan vuruştan sonra **~1s** içinde yeni sayılan vuruş yoksa o hedefteki sayaç **sıfırlanır** (combo kırıldı).
+- Her **3. sayılan** vuruş bonus hasar (1H **%35**, 2H **%40** — değerler playtest).
+- Cleave değil — tüm melee zaten çoklu hedef vurabilir; sword farkı **hedefe özel combo ritmi**.
+- Statü uygulamaz; element on-hit yalnızca item affix ile (§5).
+
+*Rapier vb. standart aileler — ihtiyaç halinde; **Exotic** özel silahlar için.*
 
 ---
 
-## 7. Off-hand & Weapon Knot
+## 7. Off-hand detayları
 
-### Shield (yalnızca off-hand)
+> Slot ve yetenek kuralları → **§5**. Bu bölüm combat davranışı.
+
+### Shield
 
 **Guard** = sağ tık. **Parry yok.** Stability stat **yok**.
 
@@ -250,29 +309,83 @@ INT silahları: light attack projectile.
 
 İleride farklar affix ile de verilebilir; tip = bu üçlü taban.
 
-### Off-hand weapon
-
-| Tür | Light attack | Pasif / perk | Aktif skill |
-|-----|--------------|--------------|-------------|
-| **1H STR / Dagger** | Dual anim, **çift vuruş**; on-hit ×2 | Off-hand **%50** | Yalnızca **main hand** |
-| **Wand / Scepter** | Yok (stat stick) | Eşya bonusları | Kullanılamaz |
-| Aktifli 1H | Takılabilir | %50 | Off-hand aktif **kapalı** |
-
-*Dual hit damage çarpanı — playtest (eski taslak ×0.65).*
-
-### Weapon Knot
+### Off-hand dual wield (1H silah — STR/DEX)
 
 | Kural | Değer |
 |-------|--------|
-| Kullanım | **2H STR**, **Staff** |
-| Bow / Crossbow | Knot **yok** (*slot TBD*) |
-| Etki | Genelde **pasif** |
+| Light attack | Dual anim, **çift vuruş**; on-hit proc ×2 (affix varsa) |
+| Pasif / perk | Off-hand **%50** etki |
+| Aktif yetenek | **Kullanılabilir** (main + off ayrı CD); hasar / heal / buff gücü **%50** |
 
-Örnek knot pasifleri: disarm direnci, stagger direnci, +Status Potency (staff). *Tam roster — TBD.*
+*Dual hit damage çarpanı — playtest (×0.65 taslak).*
 
-### Focus (off-hand)
+### Off-hand Wand / Scepter (INT dual)
 
-**Askıda.** Build çeşitliliği için mekanik değiştirici; STR build’de bile kullanılabilir olacak. *Detay — TBD.*
+**1H melee main** + off Wand veya Scepter — fiziksel dual wield’in **INT karşılığı**. Bow, Crossbow, 2H off’unda **takılmaz**.
+
+| Kural | Değer |
+|-------|--------|
+| **Düz vuruş** | **Yok** (off slotta projectile yok) |
+| **Pasif / silah perk** | Off-hand **%50** (+Status Potency, +Buff Potency vb.) |
+| **Aktif yetenek** | **Kullanılabilir** (ayrı CD); hasar, DoT, heal, buff, status gücü / süresi **%50** |
+| **Scaling** | Yetenekler **INT** ile scale eder; off-hand çarpanı **×0.5** uygulanır |
+| Element tag | **Var** — sinerji (×1) |
+
+Main-hand Wand/Staff (2H projectile vb.) ile karıştırma: off-hand item **ayrı slot**; tam güç yalnızca main INT silahında.
+
+*Focus (utility) bu %50 kuralına **girmez** — silah değil.*
+
+### Weapon Knot
+
+**2H STR** ve **Staff** build’de Off Hand slotunda. **1 pasif** veya stat boost (§5).
+
+### Quiver
+
+**Bow** / **Crossbow** off-slot. **Weapon Knot ile aynı çerçeve** — yalnızca ranged için.
+
+| Kural | Değer |
+|-------|--------|
+| Yetenek | **1 pasif** *veya* yalnızca **stat boost** |
+| Element tag | **Yok** (v1) — sinerjiye girmez |
+| Sinerji | Main Bow/Crossbow **×2** + Chest **×1** (2H melee ile aynı mantık) |
+
+Shield / 1H / Focus / Wand takılamaz.
+
+### Focus (off-hand utility)
+
+**Yalnızca 1H melee** off-slot. Bow, Crossbow, 2H **takılamaz**. Main-hand **düz vuruş yok** — combat ana silahtan.
+
+| Kural | Değer |
+|-------|--------|
+| Yetenek | **1 aktif** *veya* **1 pasif** |
+| Element tag | **Var** — sinerji (×1) |
+| Dual wield | **Değil** — off 1H silah %50 kuralına **girmez** |
+
+#### Ne tür eşyalar?
+
+Focus, **silah ailesi değil** — off-hand’e takılan, fantezisi serbest **utility** parçaları. Ortak özellik: tek güçlü kimlik, tek ana etki (aktif *veya* pasif). Item başına isim ve sayılar serbest; aşağıdaki **tarzlar** tasarım dilini tanımlar.
+
+| Tarz | Aktif / pasif | Oyuncu fantezisi | Tasarım notu |
+|------|----------------|------------------|--------------|
+| **Tüketilebilir / ritüel** | Aktif | “Kullanınca kendime (veya yakına) güçlü kısa etki” | Tek tuş, kısa anim, **CD** ile sınırlı; doğrudan hasar şart değil — **buff**, heal, cleanse, geçici stat. Buff Potency süreyi uzatır. |
+| **Tek hedef kontrol** | Aktif | “Isabet edince rakibin pozisyonunu bozarım” | Çekme, itme, kısa **Slow** / **Root** tek hedefte. Menzil ve CD ile denge; boss bağışıklıkları item tier’da tanımlanır. |
+| **Alan kontrol** | Aktif | “Bölgeyi kilitleyip alan sahibi olurum” | Yer hedefli veya fırlatılan **AoE**; çoğunlukla **Root** (hareket 0%, saldırı açık) veya güçlü Slow. PvP’de süre/CD kritik. |
+| **Pasif takı / totem** | Pasif | “Sürekli küçük ama build’i tanımlayan bonus” | Flat veya scaling stat (**Status Potency**, Buff Potency, stamina, CD reduction). Harmony / affix ile stack kuralları gear tablosunda. |
+| *(genişleme)* | İkisi | Savunma, setup, summon | Barrier, kısa on-hit status (affix ile çakışmamasına dikkat), decoy — v1 sonrası |
+
+Yeni CC → `STATUS_SYSTEM.md` (ör. **Root**: hareket yok, saldırı serbest).
+
+#### Focus vs diğer off eşyalar
+
+| Off | Düz vuruş | Aktif / pasif | Sinerji tag | Rol |
+|-----|-----------|---------------|-------------|-----|
+| **Shield** | Guard | Var | Var | Savunma |
+| **1H silah** | Dual chain | Var (%50 pasif perk) | Var | Hasar |
+| **Focus** | Yok | Var | Var | Genel utility — tarzlar yukarıda |
+| **Wand / Scepter** | Yok | Var (**%50**) | Var | INT dual — §7 |
+| **Knot / Quiver** | Yok | Pasif / stat | Yok | 2H / ranged pasif |
+
+*Wand/Scepter off detay → yukarıdaki **Off-hand Wand / Scepter** bölümü; Focus ayrı.*
 
 ---
 
@@ -319,43 +432,60 @@ Placeholder maliyetler → `COMBAT_STAT_SHEET.md` §12.8.
 
 1. Crit roll  
 2. Raw Damage  
-3. Defence → DR% → Mace shred  
-4. Guard chip + stamina  
-5. On-hit statü / kimya  
-6. Resist vs Potency  
+3. **Element matchup** (weapon → target chest; direct / skill burst only)  
+4. Defence → DR% → Mace shred  
+5. Guard chip + stamina  
+6. On-hit status (affix / ability)  
+7. Resist vs Potency  
 
 ---
 
 ## 9. Chemistry & Synergies
 
-### Katman 1 — Reaksiyonlar (kilit)
+> **Status:** `STATUS_SYSTEM.md` · **Reaksiyonlar (10, kilit):** `CHEMISTRY_ENGINE.md` §3
 
-`Wet` hub. Tüketim kuralı anti-loop. Tam tablo → **`CHEMISTRY_ENGINE.md`**.
+### Global reaksiyon kuralları
 
-| Reaksiyon | Sonuç |
-|-----------|--------|
-| Wet + Ignite | Steam — ikisi iptal |
-| Wet + Shock | Chain lightning (15r) |
-| Wet + Windy | Chilled |
-| Wet + Poisoned | Contagion spread (10r) |
+- Uygulama **sırası yok** (`Wet+Ignite` = `Ignite+Wet`)
+- Reaksiyonda **iki girdi silinir**; süreli çıktı kalır
+- **Potency** → süre · **Resist** → süre + hasar
 
-DoT yığını: 2+ DoT aktif → ×2 tick.
+| # | Girdi | Sonuç |
+|---|-------|--------|
+| R1 | Wet + Ignite | **Vaporize** — burst; Ignite DoT yok |
+| R2 | Wet + Shock | **Chain Shock** — menzildeki tüm Wet → Shock |
+| R3 | Wet + Windy | **Chilled** — donma |
+| R4 | Chilled + Ignite | **Thaw** — Ignite uygulanamaz penceresi |
+| R5 | Bleed + Ignite | **Cauterize** — Bleed ×0.75 burst; Ignite → Cauterize DoT (Ignite kalmaz) |
+| R6 | Bleed + Poisoned | **Blight** — kalan hasar ×2 DoT |
+| R7 | Windy + Slow | **Grounded** — %80 slow |
+| R8 | Wet + Poisoned | **Contamination** — menzildeki Wet → Poisoned |
+| R9 | Windy + Ignite | **Wild Fire** — Ignite DoT ×1.5, AoE tick (çevre: hasar only) |
+| R10 | Ignite + Poisoned | **Caustic Burn** — kalan hasar ×2 DoT; süre = **kısa** kalan |
 
-Element matchup ±15% yalnızca **doğrudan hasar** (opsiyonel toggle).
+*Eski Wet hub tablosu kaldırıldı — yukarıdaki liste geçerli.*
 
-### Katman 2 — Sinerjiler (*açık*)
+### Status & Potency (kilit)
 
-Element tabanlı loadout bonusları (ör. 3× Fire) — **reaksiyonları güçlendirmez**; oyuna özgü pasif mekanikler.
+- **Status Potency:** debuff / setup / CC / DoT **süresini** uzatır
+- **Resist:** **süre** ve **hasar** (DoT, burst, reaksiyon) azaltır
+- **DoT DPS tabanı:** eşya affix — Potency DPS'e girmez
+- **Temel süre / DPS / menzil:** `STATUS_SYSTEM.md` §4
 
-*Örnek liste, değerler, UI — TBD.*
+### Katman 2 — Sinerjiler (çerçeve kilit)
 
-### Status & Potency
+Tam spec → **`CHEMISTRY_ENGINE.md` §3**.
 
-- **Status Potency** (INT, wand/staff): Ignite DPS, Shock süresi vb.
-- **Resist** (INT, gear): aynı etkilerin azaltılması
-- **Buff Potency** (base + INT, scepter): heal / buff
+| Kombinasyon | Yön |
+|-------------|-----|
+| **Pure x3** (3× aynı element) | Main-hand düz vuruş on-hit + element perk — §3.5 |
+| **Harmony** (x1+x1+x1, 1H) | +15 flat Status Potency |
+| **Unbound** (Pure Neutral) | +5% direct · +10% Defence · +12% Resist — §3.7 |
+| **Duality** (x2+x1) | Agirlik 2+1 · **+5% Defence · +5% Resist** — `CHEMISTRY_ENGINE.md` §3.3 |
 
-Staff yeteneği: ana hasar → Defence; bıraktığı Ignite → Resist/Potency kanalı.
+**Water (pure x3):** silahlar kilitli → ikinci element **Hand / Helmet** (veya takım).
+
+Reaksiyonları **doğrudan güçlendirmez**.
 
 ---
 
@@ -446,7 +576,7 @@ Low poly, flat UI hedefi. *Asset pipeline — TBD.*
 | Silahlar | 1H Sword, 1H Axe, Staff, Bow |
 | Off-hand | **Kite Shield** (tek tip) |
 | Combat | Light attack, dodge + recovery, guard |
-| Kimya | 4 Wet reaksiyon |
+| Kimya | 10 reaksiyon + status katalog |
 | Ekipman | Birkaç manuel tier-1 item |
 | UI | Defence / Resist tooltip kuralı |
 
@@ -472,9 +602,11 @@ Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss
 | **Chip** | Guard sırasında yine de alınan hasar payı |
 | **Defence Shred** | Mace perk — hedef DR%’nin bir kısmını ignore |
 | **Wet hub** | Wet + X reaksiyonlarının merkezi etiket |
-| **Sinerji** | 3× element loadout bonusu — reaksiyondan ayrı katman |
-| **Weapon Knot** | 2H STR / Staff pasif off-slot |
-| **Focus** | Off-hand mekanik değiştirici (*TBD*) |
+| **Sinerji** | Main + Off + Chest ağırlık — `CHEMISTRY_ENGINE.md` §3 |
+| **Weapon Knot** | 2H STR / Staff off; pasif/stat; tagsiz |
+| **Quiver** | Bow / Crossbow off; pasif/stat; tagsiz; main sinerji **×2** |
+| **Focus** | 1H melee off; utility tarzları §7; 1 aktif veya 1 pasif |
+| **Wand / Scepter (off)** | INT dual; düz vuruş yok; aktif/pasif/perk **%50** |
 | **TTK** | Time to kill; orta, skill ile uzar |
 
 ---
@@ -491,17 +623,22 @@ Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss
 
 ### Combat & gear
 
-- [ ] Focus off-hand — tam mekanik seti
-- [ ] Bow / Crossbow off-slot (knot yok; quiver?)
+- [x] Focus — tarz çerçevesi (§7)
+- [x] Wand/Scepter off — INT dual; %50 aktif/pasif/perk
+- [x] Bow / Crossbow off-slot → **Quiver** (§7)
 - [ ] Dual wield per-hit damage çarpanı (final)
-- [ ] Element matchup PvP’de açık mı?
+- [x] Element matchup — Silah→Chest, direct+burst only (`CHEMISTRY_ENGINE.md` §2)
 - [ ] Yetenek crit alır mı?
 - [ ] Guard hasar pipeline (DR önce mi chip önce mi — final sıra)
 
 ### Sinerji & kimya
 
-- [ ] 3× element sinerji listesi ve değerler
-- [ ] Çapraz sinerji (2 Fire + 1 Wind vb.)
+- [x] Reaksiyon matrisi v1 (10 reaksiyon) → `CHEMISTRY_ENGINE.md`
+- [x] Sinerji çerçevesi (main+off+chest) → `CHEMISTRY_ENGINE.md` §3
+- [x] Pure x3 perk listesi → `CHEMISTRY_ENGINE.md` §3.5
+- [x] Harmony (x1+x1+x1) → §3.6
+- [x] Unbound (Pure Neutral) → §3.7
+- [x] Duality (x2+x1) → `CHEMISTRY_ENGINE.md` §3.3
 - [ ] Yeni reaksiyonlar (CHEMISTRY_ENGINE §7 brainstorm)
 
 ### Progression & live

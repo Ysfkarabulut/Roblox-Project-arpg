@@ -39,7 +39,7 @@
 | 4 | **HP** | Can |
 | 5 | **Defence** | Ham stat; tooltip’te DR% |
 | 6 | **Resist** | Ham stat; tooltip’te etki % |
-| 7 | **Status Potency** | Ignite DPS, Shock süresi, stagger süresi vb. (saldırı) |
+| 7 | **Status Potency** | Debuff / DoT **süresini** uzatır (hasar değil) |
 | 8 | **Crit Chance** | Light attack crit ihtimali |
 | 9 | **Crit Damage** | Crit çarpanı |
 | 10 | **Buff Potency** | Heal / buff miktarı ve süresi |
@@ -116,7 +116,13 @@ effect% = Resist / (Resist + C_res)
 applied_effect = raw_effect × (1 - effect%)
 ```
 
-**Etki:** DoT tick azaltma; Shock / stagger / slow süresi kısaltma.
+**Etki:** DoT hasarı ve burst azaltma; CC / slow / setup **süresi** kısaltma. Aynı `effect%` hem süre hem hasara uygulanır.
+
+```
+resist_effect% = Resist / (Resist + C_res)
+final_duration = base × (1 + potency × k_pot_duration) × (1 - resist_effect%)
+final_damage   = base_damage × (1 - resist_effect%)
+```
 
 | Sabit | Değer |
 |-------|--------|
@@ -164,30 +170,36 @@ crit_multiplier = Crit Damage% / 100
 ## 7. Status Potency & Buff Potency
 
 ```
-Status_Potency = INT × k_int_potency + gear + wand/staff perk
+Status_Potency = INT × k_int_potency + gear + wand/staff perk + Harmony (+15)
 Buff_Potency   = base_buff_potency + INT × k_int_buff + gear + scepter perk
 
--- DoT örnek (Ignite base 5 DPS):
-ignite_dps = IGNITE_BASE + Status_Potency × k_pot_dot
+-- Süre (DoT dahil):
+status_duration = base_duration × (1 + Status_Potency × k_pot_duration) × (1 - resist_duration)
 
--- Süre örnek (Shock base 0.5s):
-status_duration = base_duration × (1 + Status_Potency × k_pot_duration)
+-- Hasar (DoT DPS, burst, reaksiyon hasarı):
+ignite_dps  = (IGNITE_BASE + gear_ignite_dps) × (1 - resist_damage)
+poison_dps  = (POISON_BASE + gear_poison_dps) × (1 - resist_damage)
+bleed_dps   = (BLEED_BASE  + gear_bleed_dps)  × (1 - resist_damage)
+burst_damage = burst_base × (1 - resist_damage)
 
--- Heal örnek:
-heal_amount = base_heal × (1 + Buff_Potency × k_buff_heal)
+-- Heal / buff:
+heal_amount   = base_heal × (1 + Buff_Potency × k_buff_heal)
 buff_duration = base_buff_dur × (1 + Buff_Potency × k_buff_duration)
 ```
 
 | Sabit | Değer |
 |-------|--------|
 | `k_int_potency` | **0.8** / INT |
-| `k_pot_dot` | **0.05** (Potency 60 → +3 Ignite DPS) |
 | `k_pot_duration` | **0.004** (Potency 60 → +24% süre) |
+| `IGNITE_BASE` | **7** DPS · **3s** |
+| `POISON_BASE` | **3** DPS · **5s** |
+| `BLEED_BASE` | **4** DPS · **8s** |
 | `base_buff_potency` | **8** (her karakter) |
 | `k_int_buff` | **0.5** / INT |
 | `k_buff_heal` | **0.01** |
 | `k_buff_duration` | **0.008** |
-| `IGNITE_BASE` | **5** DPS (kimya motoru) |
+
+Tam süreler ve reaksiyon sabitleri → **`STATUS_SYSTEM.md` §4**.
 
 | Silah | Perk |
 |-------|------|
@@ -215,14 +227,14 @@ buff_duration = base_buff_dur × (1 + Buff_Potency × k_buff_duration)
 | Silah | Scale | Perk |
 |-------|-------|------|
 | Dagger | DEX | Backstab (arkadan bonus hasar) |
-| 1H Sword | STR | Bleed on-hit |
+| 1H Sword | STR | **Measured Strike** (hedef başına 3. hit +%35; guard sayılır; ~1s timeout) |
 | 1H Axe | STR | Rakip guard/parry → hedef ekstra Stamina damage |
 | 1H Mace | STR | Defence Shred |
 | Wand | INT | +Status Potency |
 | Scepter | INT | +Buff Potency |
 | Bow | DEX | +Crit Chance |
 | Crossbow | DEX | +Crit Damage; vuruş arası reload anim |
-| 2H Sword | STR | Bleed (güçlü) |
+| 2H Sword | STR | Measured Strike (hedef başına 3. hit +%40; guard sayılır; ~1s timeout) |
 | 2H Axe | STR | Anti-guard stamina (artmış) |
 | 2H Mace | STR | Defence Shred (yüksek) |
 | Staff | INT | +Status Potency++; projectile light attack |
@@ -231,7 +243,9 @@ buff_duration = base_buff_dur × (1 + Buff_Potency × k_buff_duration)
 
 ---
 
-## 9. Off-hand & Weapon Knot
+## 9. Off-hand & Loadout (özet)
+
+Tam slot / yetenek kuralları → **`GDD.md` §5**.
 
 ### Shield (Guard — sağ tık)
 
@@ -245,23 +259,27 @@ Stability **yok**.
 
 Guard genel: vuruşta ek stamina maliyeti; açıkken regen yok. Stamina 0: pasif drain → **Slow 50%** (%10 dolunca kalkar); vuruşla biterse → **Stagger 0.5s**.
 
-### Off-hand weapon
+### Off-hand 1H (dual wield — STR/DEX)
 
-| Tür | Light attack | Pasif / perk | Aktif skill |
-|-----|--------------|--------------|-------------|
-| 1H STR / Dagger | Dual anim, **çift vuruş**; on-hit ×2 | Off-hand **%50** | Yalnızca **main hand** |
-| Wand / Scepter off | Yok (stat stick) | Eşya bonusları | Kullanılamaz |
-| Aktifli 1H off-hand | Takılabilir | %50 pasif/perk | Off-hand aktif **kapalı** |
+| Kural | Değer |
+|-------|--------|
+| Light attack | Çift vuruş; on-hit affix ×2 |
+| Pasif / perk | Off-hand **%50** |
+| Aktif | Kullanılabilir; etki **%50** |
 
-Dual damage çarpanı: playtest (önceki taslak ×0.65 — iki hit ile denge).
+Dual damage çarpanı: playtest (×0.65 taslak).
 
-### Weapon Knot
+### Off-hand Wand / Scepter (INT dual)
 
-Yalnızca **2H STR** ve **Staff**. Genelde **pasif**. Bow/Crossbow: knot yok (şimdilik).
+| Kural | Değer |
+|-------|--------|
+| Light attack | **Yok** |
+| Pasif / perk | Off-hand **%50** |
+| Aktif | Kullanılabilir; hasar / heal / buff / status **%50**; INT scale |
 
-### Focus
+### Weapon Knot / Quiver / Focus
 
-Askıda — build modifier, sonra.
+Knot / Quiver: tagsiz pasif veya stat. Focus: utility; **%50 kuralına girmez**. §7 GDD.
 
 ---
 
@@ -297,11 +315,14 @@ Askıda — build modifier, sonra.
 ```
 1. Crit roll
 2. Raw damage (Damage stat)
-3. Defence → DR% → effective_DR% (shred)
-4. Chip (shield guard) + stamina costs
-5. On-hit statü / kimya
-6. Resist vs Potency on effects
+3. Element matchup (attacker Main Hand → defender Chest; direct + skill burst only) ×1.15 / ×0.85
+4. Defence → DR% → effective_DR% (shred)
+5. Chip (shield guard) + stamina costs
+6. On-hit status (affix / ability)
+7. Resist vs Potency on effects
 ```
+
+Matchup tablosu → `CHEMISTRY_ENGINE.md` §2.4. DoT / reaksiyon hasarı matchup **dışı**.
 
 ---
 
@@ -438,7 +459,7 @@ HP 1120 (VIT 90) ≈ 17 hit
 | 4 primary + sheet formülleri | ✅ | — |
 | Defence 0.1%/def + cap | ✅ | — |
 | Sword / Axe / Staff / Bow + Kite shield | ✅ | 3 shield tipi |
-| Kimya 4 reaksiyon | ✅ | Sinerji setleri |
+| Kimya (10 reaksiyon + status) | ✅ | Sinerji setleri |
 | Dodge + Guard | ✅ | Parry perfect |
 | Dual wield | — | ✅ |
 | Knot | — | ✅ |
