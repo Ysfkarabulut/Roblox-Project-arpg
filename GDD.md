@@ -1,4 +1,4 @@
-# Game Design Document
+﻿# Game Design Document
 
 | | |
 |--|--|
@@ -7,7 +7,7 @@
 | **Kamera** | Third-person action |
 | **Platform** | Roblox (hedef) |
 | **Durum** | Tasarım — kod yok |
-| **İlişkili belgeler** | `COMBAT_STAT_SHEET.md`, `CHEMISTRY_ENGINE.md` |
+| **İlişkili belgeler** | `COMBAT_STAT_SHEET.md`, `CHEMISTRY_ENGINE.md`, `MODES.md` |
 
 > CannonClash ile **bağımsız** proje. Kimya motoru konsept olarak taşınabilir; lane / cannon / birim meta bu GDD kapsamında değildir.
 
@@ -25,10 +25,10 @@
 8. [Combat Systems](#8-combat-systems)
 9. [Chemistry & Synergies](#9-chemistry--synergies)
 10. [Equipment & Progression](#10-equipment--progression)
-11. [PvE — Boss Design](#11-pve--boss-design)
+11. [PvE — Boss & Dungeon](#11-pve--boss--dungeon)
 12. [PvP & Teams](#12-pvp--teams)
 13. [UI / UX](#13-ui--ux)
-14. [MVP Scope](#14-mvp-scope)
+14. [Playtest Slice (son faz)](#14-playtest-slice-son-faz--ertelendi)
 15. [Glossary](#15-glossary)
 16. [Open Questions (Backlog)](#16-open-questions-backlog)
 
@@ -54,7 +54,7 @@ Class’sız bir **third-person action** oyunu: gücün **silah, zırh ve elemen
 
 - **Ortalama oyuncu:** loadout dene, kimya keşfet, orta süreli düellolar.
 - **İyi oyuncu:** stamina oyunu, pozisyon, element combo — ödül = daha az yenen vuruş.
-- **Takım (ileride):** setup + burst rolleri (Wet → Shock, shred tank vb.).
+- **Takım:** 2v2 / 3v3'te setup + burst, front line (`MODES.md` §3)
 
 ### Bilinçli olarak olmayanlar (şimdilik)
 
@@ -81,7 +81,7 @@ Class’sız bir **third-person action** oyunu: gücün **silah, zırh ve elemen
 |-------|------------------|
 | **Lobby** | Loadout düzenle, stat dağıt, eşya seç, mod seç |
 | **Match** | Third-person combat, yetenek + light attack, kimya |
-| **Result** | *TBD — XP, loot, rating, currency* |
+| **Result** | Ödül, loot, ranked MMR (PvP), boss drop (PvE) — *detay TBD* |
 | **Meta** | *TBD — yeni eşya, level, craft* |
 
 Ödül ve uzun vadeli progression **açık** — combat çekirdeği önce kilitlendi.
@@ -90,29 +90,35 @@ Class’sız bir **third-person action** oyunu: gücün **silah, zırh ve elemen
 
 ## 3. Lobby & Modes
 
+> Tam spec: **`MODES.md`** (arena bracket'leri, ranked, PvE fazları, üretim sırası)
+
 ### Lobby
 
-- Matchmaking kuyruğu
-- Loadout ekranı (slotlar §5)
-- Stat dağıtımı (level point)
-- *Mağaza / kozmetik — TBD*
-- *Tutorial — TBD*
+- Loadout ekranı (slotlar §5) · stat dağıtımı
+- Mod seçimi: **PvP** (1v1 / 2v2 / 3v3 × Casual / Ranked) · **PvE Boss** (solo / duo / trio)
+- Matchmaking / party invite
+- *Mağaza / kozmetik — TBD* · *Tutorial — TBD*
 
-### Modlar (hedef)
+### Mod özeti (kilit yön)
 
-| Mod | Takım | Durum |
-|-----|-------|--------|
-| **PvP** | 1v1, 2v2, 3v3 | Hedef; MVP’de 1v1 |
-| **PvE Boss** | 1v1, 2v2, 3v3 (co-op) | Hedef; wave + phase boss |
+| Ana mod | İçerik | Durum |
+|---------|--------|--------|
+| **PvP — 1v1 Arena** | Duel Pit · Casual + **Ranked** | Hedef |
+| **PvP — 2v2 Arena** | Skirmish Yard · Casual + **Ranked** | Hedef |
+| **PvP — 3v3 Arena** | Clash Ring · Casual + **Ranked** | Hedef |
+| **PvE — Boss Fight** | Phase boss · 1 / 2 / 3 co-op | **İlk PvE içeriği** |
+| **PvE — Dungeon** | Odalar + trash + boss | **İleride** (`MODES.md` §5) |
 | **Açık dünya** | — | İleride opsiyon |
 
-### Maç akışı (taslak)
+Her PvP bracket'in **kendi ranked ladder'ı** vardır (MMR birbirinden bağımsız).
 
-1. Loadout kilidi / hazır
-2. Arena veya boss odası yükleme
+### Maç akışı (özet)
+
+1. Mod + queue seç → loadout kilidi
+2. Arena veya boss odası
 3. Countdown → combat
-4. Win condition: *PvP — HP/round TBD; PvE — boss HP*
-5. Sonuç ekranı → lobby
+4. Win: PvP → karşı takım/oyuncu elenir (`MODES.md` §3.5) · PvE → boss HP 0
+5. Sonuç → lobby (ranked: MMR güncelle)
 
 ---
 
@@ -150,7 +156,7 @@ Tam formüller ve `k` katsayıları → **`COMBAT_STAT_SHEET.md`**.
 
 ### TTK profili (kilit)
 
-- **Orta TTK:** ~10–14 isabet (orta gear)
+- **Orta TTK:** ~**14–18** isabet (orta gear) — iyi kombo ile maç uzar
 - **İyi vs iyi:** 20–35+ sn (dodge / guard)
 - Knob’lar: `base_hp 120`, `k_dmg 0.0075`, DR cap %70 PvP
 
@@ -305,7 +311,7 @@ INT silahları: light attack projectile.
 | **Kite** | 1.0 | 20% | **%40** |
 | **Tower** | 1.5 | 30% | **%30** |
 
-\*Guard sırasında chip + vuruş başına stamina maliyeti. Stamina 0: pasif drain → **Slow 50%** (%10 dolunca kalkar); vuruşla biterse → **Stagger 0.5s**.
+\*Guard sırasında chip + vuruş başına stamina maliyeti. Guard break → §8.
 
 İleride farklar affix ile de verilebilir; tip = bu üçlü taban.
 
@@ -317,7 +323,7 @@ INT silahları: light attack projectile.
 | Pasif / perk | Off-hand **%50** etki |
 | Aktif yetenek | **Kullanılabilir** (main + off ayrı CD); hasar / heal / buff gücü **%50** |
 
-*Dual hit damage çarpanı — playtest (×0.65 taslak).*
+*Dual hit damage çarpanı — kilit:* Main **×1.0** · Off **×0.65** (`COMBAT_STAT_SHEET.md` §11b).
 
 ### Off-hand Wand / Scepter (INT dual)
 
@@ -411,9 +417,31 @@ Placeholder maliyetler → `COMBAT_STAT_SHEET.md` §12.8.
 
 ### Guard (kilit)
 
-- Yalnızca **shield**
+- Yalnızca **shield**; ön **180°** yayı (`COMBAT_STAT_SHEET.md` §11.4)
 - Shield tipine göre drain, slow, chip (§7)
-- Açıkken %30 slow **yerine** shield tipi slow değerleri
+- Chip ve stamina maliyeti **`after_dr`** üzerinden (matchup + DR sonrası)
+
+#### Guard break (kilit)
+
+| Tetik | Sonuç |
+|-------|--------|
+| Pasif drain → stamina **0** | Guard kapanır · **Slow 50%** · süre: **3s** *veya* stamina ≥ **%10** max (hangisi önce) |
+| Vuruş → stamina **0** | Guard kapanır · **Stun 0.5s** (guard break) |
+
+### Light attack (MVP — kilit)
+
+- Tekrarlayan swing; **combo zinciri yok**
+- Hit recovery **0.15s** (Attack Speed tier ile ölçeklenir)
+- Poise / hyperarmor MVP'de yok
+
+### Healing (MVP — kilit)
+
+| Kural | Değer |
+|-------|--------|
+| Combat HP regen | **Yok** |
+| Lobby / maç arası | **Full HP + stamina** restore |
+| Yetenek heal | `base_heal × (1 + Buff_Potency × k_buff_heal)` — overheal yok |
+| MVP kaynak | Staff aktif yeteneği (`MVP_CONTENT.md`) |
 
 ### Parry (kilit — MVP sonrası implement)
 
@@ -430,13 +458,9 @@ Placeholder maliyetler → `COMBAT_STAT_SHEET.md` §12.8.
 
 ### Hasar çözüm sırası
 
-1. Crit roll  
-2. Raw Damage  
-3. **Element matchup** (weapon → target chest; direct / skill burst only)  
-4. Defence → DR% → Mace shred  
-5. Guard chip + stamina  
-6. On-hit status (affix / ability)  
-7. Resist vs Potency  
+Tam pipeline → **`COMBAT_STAT_SHEET.md` §11** (kilit v1).
+
+Özet: Crit → Raw → Matchup → DR → Dodge/Parry/Guard → HP → On-hit → Reaksiyon.
 
 ---
 
@@ -446,8 +470,9 @@ Placeholder maliyetler → `COMBAT_STAT_SHEET.md` §12.8.
 
 ### Global reaksiyon kuralları
 
-- Uygulama **sırası yok** (`Wet+Ignite` = `Ignite+Wet`)
-- Reaksiyonda **iki girdi silinir**; süreli çıktı kalır
+- Status **uygulandığı anda** geçerli çift varsa reaksiyon **hemen** çözülür (`CHEMISTRY_ENGINE.md` §5.4)
+- İki girdi **silinir**; reaksiyonun süreli çıktısı varsa **o** kalır (Vaporize gibi anlık burst'lerde kalıntı yok)
+- CC / DoT **öncelik tablosu yok** — sıra, status'lerin **uygulanma sırasına** bağlı
 - **Potency** → süre · **Resist** → süre + hasar
 
 | # | Girdi | Sonuç |
@@ -502,33 +527,48 @@ Reaksiyonları **doğrudan güçlendirmez**.
 
 ---
 
-## 11. PvE — Boss Design
+## 11. PvE — Boss & Dungeon
 
-### Hedef yapı (kilit yön)
+> Boss spec + queue: **`MODES.md` §4** · Dungeon yol haritası: **`MODES.md` §5**
 
-- **Tek boss**, **phase**’ler (farklı mekanikler)
-- **Wave**’ler (bazı boss’larda)
-- 1v1 / 2v2 / 3v3 co-op
+### Faz 1 — Boss Fight (ilk PvE — kilit yön)
 
-### Tasarım notları
-
+- **Yalnızca boss encounter** — dungeon yok
+- **1 / 2 / 3** oyuncu co-op queue
+- Tek boss, **phase**'ler; bazı boss'larda önce **wave**
+- Win: boss HP → 0 · Lose: party wipe
 - Phase geçişinde element pivot (Fire immune → Water build vb.)
 - Mace shred / axe guard break tank rollere anlamlı
-- *Boss roster, HP scale, enrage — TBD*
+- Boss roster, HP scale, enrage → `MODES.md` §4.4 (*doldurulacak*)
+
+### Faz 2 — Dungeon (ileride)
+
+- Bağlı odalar, trash mob, run sonu boss
+- Aynı party boyutu (1–3), aynı combat sistemi
+- Detay: `MODES.md` §5
 
 ---
 
+
 ## 12. PvP & Teams
 
-### Format
+> Arena bracket'leri, ranked, win condition: **`MODES.md` §3**
 
-| | MVP | Hedef |
-|--|-----|--------|
-| 1v1 | ✅ | ✅ |
-| 2v2 | — | ✅ |
-| 3v3 | — | ✅ |
+### Bracket'ler (kilit)
 
-### Rol çeşitliliği (class olmadan)
+| Bracket | Arena | Casual | Ranked |
+|---------|-------|--------|--------|
+| **1v1** | Duel Pit | ✅ | ✅ |
+| **2v2** | Skirmish Yard | ✅ | ✅ |
+| **3v3** | Clash Ring | ✅ | ✅ |
+
+Ranked: bracket başına **ayrı MMR** — 1v1 rating'i 3v3'ü etkilemez.
+
+### Win condition
+
+`MODES.md` §3.5 — elimination, respawn yok. Timeout **TBD**.
+
+### Takım rol çeşitliliği (class olmadan)
 
 | Rol | Loadout örneği |
 |-----|----------------|
@@ -537,8 +577,6 @@ Reaksiyonları **doğrudan güçlendirmez**.
 | Setup | Water / Wet on gear, staff |
 | Burst | Shock, Poison spread |
 | Ranged | Bow, Crossbow |
-
-*Round win, tiebreak, ranked — TBD.*
 
 ---
 
@@ -563,26 +601,19 @@ Low poly, flat UI hedefi. *Asset pipeline — TBD.*
 
 ---
 
-## 14. MVP Scope
+## 14. Playtest Slice (son faz — ertelendi)
 
-**Amaç:** “Stat + silah + guard/dodge + kimya çalışıyor mu?” — kod öncesi GDD tamamlandıktan sonra implement.
+**MVP en son** yapılacak. Önce F1–F4 (`MODES.md` §1): mekanikler → içerik → modlar → meta.
 
-### MVP’de
+Playtest slice = tüm sistemler bir arada dış test. Şablon: `MVP_CONTENT.md` (tam test seti + checklist).
 
-| Sistem | Kapsam |
-|--------|--------|
-| Lobby | Basit queue → 1v1 |
-| Stats | 4 primary + sheet `k` v1 |
-| Silahlar | 1H Sword, 1H Axe, Staff, Bow |
-| Off-hand | **Kite Shield** (tek tip) |
-| Combat | Light attack, dodge + recovery, guard |
-| Kimya | 10 reaksiyon + status katalog |
-| Ekipman | Birkaç manuel tier-1 item |
-| UI | Defence / Resist tooltip kuralı |
+| Öncelik | Ne |
+|---------|-----|
+| Şimdi | Mekanik + içerik + mod tasarımı |
+| Sonra | Kod: combat → boss → 3 PvP bracket + ranked |
+| En son | Playtest slice, denge pass, soft launch |
 
-### MVP sonrası (tasarım hazır)
-
-Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss phase, sinerji setleri.
+*Eski “yalnızca 1v1 MVP” kapsamı kaldırıldı — hedef ürün modları `MODES.md`.*
 
 ---
 
@@ -607,6 +638,9 @@ Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss
 | **Quiver** | Bow / Crossbow off; pasif/stat; tagsiz; main sinerji **×2** |
 | **Focus** | 1H melee off; utility tarzları §7; 1 aktif veya 1 pasif |
 | **Wand / Scepter (off)** | INT dual; düz vuruş yok; aktif/pasif/perk **%50** |
+| **Ranked** | Bracket başına ayrı MMR ladder — `MODES.md` §3.6 |
+| **Boss Fight** | İlk PvE; phase boss, 1–3 co-op |
+| **Dungeon** | İleride PvE; odalar + trash + boss |
 | **TTK** | Time to kill; orta, skill ile uzar |
 
 ---
@@ -626,10 +660,10 @@ Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss
 - [x] Focus — tarz çerçevesi (§7)
 - [x] Wand/Scepter off — INT dual; %50 aktif/pasif/perk
 - [x] Bow / Crossbow off-slot → **Quiver** (§7)
-- [ ] Dual wield per-hit damage çarpanı (final)
+- [x] Dual wield per-hit damage çarpanı → Main ×1.0 · Off ×0.65 (`COMBAT_STAT_SHEET.md` §11b)
 - [x] Element matchup — Silah→Chest, direct+burst only (`CHEMISTRY_ENGINE.md` §2)
-- [ ] Yetenek crit alır mı?
-- [ ] Guard hasar pipeline (DR önce mi chip önce mi — final sıra)
+- [x] Yetenek crit → direct burst evet, DoT/heal/reaksiyon hayır (`COMBAT_STAT_SHEET.md` §11.2)
+- [x] Guard hasar pipeline → `after_dr` chip + stance sırası (`COMBAT_STAT_SHEET.md` §11)
 
 ### Sinerji & kimya
 
@@ -639,14 +673,23 @@ Parry, dual wield, 3 shield tipi, Knot, Focus, kalan silahlar, 2v2/3v3, tam boss
 - [x] Harmony (x1+x1+x1) → §3.6
 - [x] Unbound (Pure Neutral) → §3.7
 - [x] Duality (x2+x1) → `CHEMISTRY_ENGINE.md` §3.3
-- [ ] Yeni reaksiyonlar (CHEMISTRY_ENGINE §7 brainstorm)
+- [ ] Yeni reaksiyonlar (`CHEMISTRY_ENGINE.md` §6 brainstorm)
+
+### Modlar & ranked
+
+- [x] PvP 1v1 / 2v2 / 3v3 arena + casual/ranked çerçevesi → `MODES.md` §3
+- [x] PvE boss önce, dungeon sonra → `MODES.md` §4–5
+- [ ] Ranked MMR formülü, tier, sezon süresi
+- [ ] 2v2 / 3v3 premade vs solo ranked
+- [ ] PvP timeout / 120s süre dolunca sonuç
+- [ ] Boss roster + party HP scale
+- [ ] Dungeon ekonomi (key / stamina)
 
 ### Progression & live
 
 - [ ] XP, loot, craft, economy
 - [ ] Monetization (kozmetik / pass — TBD)
 - [ ] Tutorial akışı
-- [ ] Ranked / casual ayrımı
 
 ### Tech & production
 

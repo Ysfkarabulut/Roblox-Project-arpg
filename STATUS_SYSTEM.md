@@ -85,7 +85,7 @@ Element tag: **matchup** = Main Hand → hedef Chest · **sinerji ağırlığı*
 | Rock | Slow | 3s · %50 slow |
 | Neutral | — | — |
 
-*Lightning = Electric (isim birleştirilecek).*
+*Element kod adı: **Lightning** (UI'da Electric kullanılabilir).*
 
 ---
 
@@ -120,7 +120,18 @@ Element tag: **matchup** = Main Hand → hedef Chest · **sinerji ağırlığı*
 **Anlık / zincir:** Vaporize, **Chain Shock** (→ Shock), **Contamination** (→ Poisoned).  
 **Hibrit:** **Cauterize** — kısmi bleed burst + Cauterize DoT (Ignite tüketilir).
 
-**Shock vs Stun vs Root:** Shock/Stun/Chilled → hareket **ve** saldırı kapalı. **Root** → yalnızca hareket **0%**; saldırı ve yetenek açık. Aynı anda birden fazla CC: **en kısıtlayıcı** kazanır (Stun > Root > Slow) — *playtest*.
+**Shock vs Stun vs Root (kilit):** Shock/Stun/Chilled → hareket **ve** saldırı kapalı. **Root** → yalnızca hareket **0%**; saldırı ve yetenek açık.
+
+### 3.1c Aynı anda birden fazla CC (hareket — reaksiyondan ayrı)
+
+Bu tablo **reaksiyon çözümü değil** — farklı kaynaklardan gelen eşzamanlı CC'nin hareket/saldırı okuması içindir (`CanMove`, `CanAttack`).
+
+| Katman | Kurallar |
+|--------|----------|
+| **Hard CC** (Stun, Shock, Chilled) | Move **0%** · Attack **kapalı** · en uzun süre kalır |
+| **Root** | Hard CC aktifken yok sayılır |
+| **Slow** | `move_mult = min(aktif slow çarpanları)` |
+| **Refresh** | Aynı ID → `max(kalan, yeni)` süre |
 
 ### 3.2 Buff
 
@@ -184,7 +195,12 @@ Bunlar da Status'tur; düşman Resist'inden geçmez. Detaylar `GDD.md` §7–8.
 | **Windy** | **3s** | **%30** slow | 70% | Evet |
 | **Slow** | **3s** | **%50** slow | 50% | Evet |
 
-**Guard break (mechanic):** Stamina pasif drain ile biterse → **Slow 50%**, süre **3s** veya %10 stamina dolana kadar (hangisi önce — GDD §7).
+**Guard break (mechanic — kilit):**
+
+| Tetik | Status | Süre |
+|-------|--------|------|
+| Pasif drain → stamina 0 | **Slow 50%** | **3s** veya stamina ≥ **10%** max (önce olan) |
+| Vuruş → stamina 0 | **Stun** (guard break) | **0.5s** |
 
 ---
 
@@ -265,11 +281,11 @@ Tüm status kaynakları aynı API'den geçer:
 -- StatusService.ApplyStatus(target, statusId, context)
 
 context = {
-  duration      = number | nil,      -- nil = katalog default
+  duration      = number | nil,
   source        = Player | NPC | "Reaction" | "Self",
-  element       = string | nil,      -- on-hit izleme
-  applyPotency  = boolean,           -- default true (debuff); stance'te false
-  params        = { ... },           -- Guard shieldType, Parry windowEnd, ...
+  element       = string | nil,
+  applyPotency  = boolean,
+  params        = { ... },
 }
 ```
 
@@ -277,15 +293,17 @@ context = {
 
 ```
 ApplyStatus(target, id, ctx)
-  1. StatusDef = Registry[id]     -- yoksa error / log
+  1. StatusDef = Registry[id]
   2. if def.immunityTags and target immune → return
   3. if def.category == Debuff → duration = CalcDuration(ctx, attacker Potency, target Resist)
   4. if def.category == Stance → skip Resist; params from combat action
-  5. REACTION_HOOK → `CHEMISTRY_ENGINE.md` ReactionResolver
-  6. Merge instance (refresh süre / replace stance)
+  5. Status hedef listesine eklenir (uygulama sırası kaydı)
+  6. REACTION_HOOK → anlık çözüm (`CHEMISTRY_ENGINE.md` §5.4)
   7. OnApplied hooks (VFX, UI icon, stat recompute)
-  8. Publish replication event (client icon)
+  8. Publish replication event
 ```
+
+**Reaksiyon:** İlk geçerli çift → girdiler silinir → çıktı kalır. Öncelik tablosu yok; sıra = uygulama sırası.
 
 ### 6.2 Kaynak tipleri (SourceType)
 
@@ -344,7 +362,9 @@ StatusQuery.HasStance(entity, "Guard") -> boolean
 StatusQuery.GetActiveDebuffs(entity) -> { id, remaining }
 ```
 
-Hasar pipeline sırası (`GDD.md`): Crit → Raw → DR → **Guard/Parry/Dodge** → on-hit status → Resist.
+Hasar pipeline sırası → **`COMBAT_STAT_SHEET.md` §11** (kilit).
+
+Özet: Crit → Raw → Matchup → DR → **Dodge / Parry / Guard** → HP → On-hit → Reaksiyon → Potency/Resist (DoT ayrı kanal).
 
 ### 6.5 Tick döngüsü
 
@@ -382,9 +402,10 @@ Stance'ler: `expiresAt` anim bitişi veya her frame input kontrolü (Guard bası
 
 ## 9. Açık playtest maddeleri
 
-- [ ] Shock + Stun overlap (uzun kalan kazanır?)
+- [x] Shock + Stun overlap → en uzun süre (§3.1c)
+- [x] Guard break Slow / Stun → §4.2 tablo
 - [ ] WildFire AoE **8** stud / Chain **12** stud menzil hissi
-- [ ] Guard break Slow: 3s sabit mi, stamina %10 mu önce
+- [ ] Grounded + Slow aynı anda — `min()` kuralı PvP hissi
 
 *Temel süre/DPS v1 kilit — §4.*
 

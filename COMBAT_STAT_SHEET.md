@@ -1,7 +1,7 @@
 # Combat Stat Sheet — Kilit v1
 
 > Third-person action, gear-based build, no class.  
-> Kimya motoru: `Docs/CHEMISTRY_ENGINE.md`  
+> Kimya motoru: `CHEMISTRY_ENGINE.md`  
 > Armour stat **yok** — yalnızca **Defence** (sayı) ve tooltip **DR%**.
 
 ---
@@ -257,7 +257,7 @@ Stability **yok**.
 | Kite | 1.0 | 20% | 40% |
 | Tower | 1.5 | 30% | 30% |
 
-Guard genel: vuruşta ek stamina maliyeti; açıkken regen yok. Stamina 0: pasif drain → **Slow 50%** (%10 dolunca kalkar); vuruşla biterse → **Stagger 0.5s**.
+Guard genel: vuruşta ek stamina maliyeti; açıkken regen yok. Stamina 0 → guard break → `GDD.md` §8 (pasif drain: Slow 50%; vuruş: Stun 0.5s).
 
 ### Off-hand 1H (dual wield — STR/DEX)
 
@@ -267,7 +267,7 @@ Guard genel: vuruşta ek stamina maliyeti; açıkken regen yok. Stamina 0: pasif
 | Pasif / perk | Off-hand **%50** |
 | Aktif | Kullanılabilir; etki **%50** |
 
-Dual damage çarpanı: playtest (×0.65 taslak).
+Dual damage çarpanı: Main **×1.0** · Off **×0.65** — güçlü başlangıç; playtest ile düşürülebilir (`§11b`).
 
 ### Off-hand Wand / Scepter (INT dual)
 
@@ -310,19 +310,98 @@ Knot / Quiver: tagsiz pasif veya stat. Focus: utility; **%50 kuralına girmez**.
 
 ---
 
-## 11. Hasar çözüm sırası (özet)
+## 11. Hasar pipeline (kilit v1)
+
+Tek referans. `GDD.md` §8 · `STATUS_SYSTEM.md` §6.4 bu sırayı kullanır.
+
+### 11.1 Direct damage (light attack, yetenek patlaması)
 
 ```
-1. Crit roll
-2. Raw damage (Damage stat)
-3. Element matchup (attacker Main Hand → defender Chest; direct + skill burst only) ×1.15 / ×0.85
-4. Defence → DR% → effective_DR% (shred)
-5. Chip (shield guard) + stamina costs
-6. On-hit status (affix / ability)
-7. Resist vs Potency on effects
+1. Crit roll          — §11.2 (uygunsa)
+2. raw                = WeaponBase × (1 + Scaling × k_dmg) × (1 + gear%) × crit_mult
+3. after_matchup      = raw × ElementMatchup(attacker.main → defender.chest)   // ±15%
+4. after_dr           = after_matchup × (1 - effective_DR% / 100)              // shred dahil
+5. Defensive stance   — §11.3 (sırayla: Dodge → Parry → Guard)
+6. HP                 — stance geçilmediyse after_dr doğrudan HP'ye
+7. On-hit status      — isabet bağlandıysa (dodge/perfect parry hariç) → ApplyStatus
+8. ReactionResolver   — `CHEMISTRY_ENGINE.md` §5
 ```
 
-Matchup tablosu → `CHEMISTRY_ENGINE.md` §2.4. DoT / reaksiyon hasarı matchup **dışı**.
+**Matchup uygulanmaz:** DoT tick, reaksiyon burst, guard chip, heal.
+
+**Guard açısı:** Saldıran → savunan ön **180°** yayı. Arkadan gelen direct hasar guard'tan geçmez (tam `after_dr`).
+
+### 11.2 Crit kuralları (kilit)
+
+| Kaynak | Crit? | Not |
+|--------|-------|-----|
+| Light attack | Evet | DEX chance · STR damage |
+| Direct damage yeteneği | Evet | Tek patlama; crit bir kez |
+| Multi-hit yetenek | **İlk hasar instance** | Sonraki tick/hit crit almaz |
+| DoT uygulama / tick | Hayır | |
+| Reaksiyon burst (Vaporize vb.) | Hayır | Kalan DoT'tan türetilir |
+| Heal / buff | Hayır | Buff Potency kullanır |
+| Guard chip | Hayır | `after_dr` üzerinden sabit % |
+
+### 11.3 Defensive stance sırası
+
+Aynı vuruşta yalnızca **bir** savunma kazanır (öncelik sırası):
+
+| # | Stance | Sonuç |
+|---|--------|--------|
+| 1 | **Dodge** (i-frame aktif) | Hasar **0**; stamina maliyeti; on-hit yok |
+| 2 | **Parry** (perfect pencere) | Hasar **0**; saldıran **Stun 1s**; on-hit yok |
+| 3 | **Guard** (ön 180°, shield) | Chip + stamina; §11.4 |
+| — | Yok | `after_dr` → HP |
+
+Parry fail veya guard: normal chip/HP akışı.
+
+### 11.4 Guard — chip & stamina (kilit)
+
+Tüm hesaplar **`after_dr`** (matchup + DR sonrası) üzerinden:
+
+```
+chip_damage    = after_dr × shield_chip%        // Kite 40%, Tower 30%, Buckler 60%
+stamina_hit    = max(8, after_dr × 0.12)        // Axe perk: ×1.5
+stamina_passive = shield_drain_per_sec × dt      // Kite 1.0/s, Buckler 0.5/s, Tower 1.5/s
+```
+
+- Chip → HP (DR tekrar uygulanmaz).
+- Guard açıkken stamina regen **yok**.
+- Stamina **0** → guard kapanır + guard break → `GDD.md` §8 · `STATUS_SYSTEM.md` §3.1.
+
+### 11.5 DoT / reaksiyon hasarı (ayrı kanal)
+
+```
+dot_tick = (dot_base + affix_dps) × (1 - resist_effect%)     // DR yok, matchup yok, crit yok
+burst    = burst_base × (1 - resist_effect%)               // Vaporize, Cauterize burst vb.
+```
+
+Süre: Potency (saldıran) → Resist (hedef) — `STATUS_SYSTEM.md` §1.3.
+
+### 11.6 Light attack (MVP)
+
+| Kural | Değer |
+|-------|--------|
+| Combo zinciri | **Yok** — tekrarlayan tek swing |
+| Hit recovery | **0.15s** (weapon Attack Speed tier ile ölçeklenir) |
+| Poise / hyperarmor | MVP'de **yok** |
+| Menzil | Silah tipine göre hitbox (melee ~6 stud, bow projectile, staff projectile) |
+
+---
+
+## 11b. Dual wield hasar (post-MVP tasarım — çarpan kilit)
+
+Her light attack swing = **2 ayrı hitbox** (main + off):
+
+```
+main_hit = main_formula × 1.0
+off_hit  = off_formula  × 0.65
+```
+
+- Attack Speed: **main** silah tier'ı geçerli.
+- On-hit affix: hit başına ayrı roll (2 proc şansı).
+- Off-hand base farklı olabilir (ayrı Weapon Base).
 
 ---
 
@@ -402,7 +481,7 @@ Bkz. §7 tablosu.
 |---------|---------|
 | Dodge | **18** flat + recovery 0.25s |
 | Sprint | **12** / s |
-| Guard vuruş | `max(8, incoming_damage × 0.12)` stamina |
+| Guard vuruş | `max(8, after_dr × 0.12)` stamina (`§11.4`) |
 | Axe vs guard | vuruş maliyeti × **1.5** |
 
 ### 12.9 Örnek build — Lv50 (gear hariç)
@@ -428,7 +507,7 @@ Bkz. §7 tablosu.
 
 ### 12.11 TTK hedefi (kilit)
 
-**Hedef:** Orta TTK — ortalama oyuncuda **~10–14 isabet** (orta gear, orta VIT).  
+**Hedef:** Orta TTK — ortalama oyuncuda **~14–18 isabet** (orta gear, orta VIT). İyi kombo/guard ile maç **doğal uzar** — tasarım onayı (2026-07).  
 **İyi oyuncu:** Guard / dodge / parry / pozisyon → daha az isabet → TTK **doğal uzar** (HP şişirmeden).
 
 | Profil | Beklenen süre (1v1, orta gear) |
@@ -445,11 +524,18 @@ Bkz. §7 tablosu.
 
 **Kilit profil:** `base_hp 120`, `k_dmg 0.0075`, `k_dr 0.1`, cap %70.
 
-**Örnek (gear yok, STR 80, weapon base 40):**
+**Orta gear tanımı (TTK referansı):** Lv **30**, VIT **60**, tier-1 kılıç (base **40**) + tier-1 chest (**+80 Defence**). Toplam Defence ≈ **295** → DR **29.5%**. HP ≈ **720**.
+
+| Profil | Raw/hit (STR 70) | Efektif/hit (DR 29.5%) | Hit to kill (720 HP) |
+|--------|------------------|------------------------|----------------------|
+| Orta DPS | ~58 | ~41 | **~18** |
+| Yüksek DPS (STR 90, +gear%) | ~72 | ~51 | **~14** |
+| Burst pencere (kimya + crit) | — | ~250–290 HP | **2–3** exchange |
+
+*Hedef bandı **14–18 orta gear hit** — guard/dodge ile pratik TTK 12–25 sn. Saf stat örneği (gear yok):*
 ```
-~64 raw/hit → HP 720 (VIT 60) ≈ 11 hit
-HP 1120 (VIT 90) ≈ 17 hit
-%35 DR → efektif ~17–26 hit bandı
+~64 raw/hit → HP 720 (VIT 60) ≈ 11 hit (DR yok)
+%35 DR → efektif ~17 hit
 ```
 
 ---
@@ -468,4 +554,4 @@ HP 1120 (VIT 90) ≈ 17 hit
 
 ---
 
-*Son güncelleme: k v1 + orta TTK profili — `k_dmg 0.0075`, `base_hp 120`, `k_dr 0.1`, `C_res 165`.*
+*Son güncelleme: 2026-07 — hasar pipeline v1, crit kuralları, dual ×0.65 off-hand, guard chip `after_dr`.*
