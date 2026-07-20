@@ -46,6 +46,7 @@ Taban: güçlü **×1.15** · zayıf **×0.85** · nötr **×1.0**.
 |------|------------------|
 | Main 1H | 1 |
 | Main 2H | 2 |
+| Main **Staff** | **2** (2H INT) |
 | Main **Bow / Crossbow** | **2** (teknik 2H sınıf) |
 | Off — 1H / Shield / Focus (tag varsa) | 1 |
 | Off — **Weapon Knot** (tagsiz) | 0 |
@@ -54,7 +55,7 @@ Taban: güçlü **×1.15** · zayıf **×0.85** · nötr **×1.0**.
 | Neutral tag | 0 |
 
 **Loadout:**
-- **2H melee** → off = Knot (tagsiz)
+- **2H melee / Staff** → off = Knot (tagsiz)
 - **Bow / Crossbow** → off = Quiver (tagsiz); sinerji = **main (×2) + chest (×1)**
 - **1H melee** → off = Shield / 1H / Focus / Wand (tag kuralları itema göre)
 
@@ -64,7 +65,7 @@ Taban: güçlü **×1.15** · zayıf **×0.85** · nötr **×1.0**.
 |------|-------|
 | **Pure x3** | Tek non-Neutral element; toplam ağırlık **3** |
 | **Duality** (x2+x1) | İki element; ağırlık **2 + 1** |
-| **Harmony** (x1+x1+x1) | Üç farklı non-Neutral; **1+1+1** (yalnızca **1H melee**) |
+| **Harmony** (x1+x1+x1) | Üç farklı non-Neutral; ağırlık **1+1+1** — **yalnızca Main ×1** (1H) ile mümkün |
 | **Unbound** | Main + Off + Chest = hepsi Neutral tag |
 | *(perk yok)* | Diğer karışımlar (ör. ×2 + Neutral chest) |
 
@@ -89,9 +90,11 @@ Main-hand düz vuruş on-hit imza status + element ek perk.
 | Steel | Wound | Bleed | +1s |
 | Neutral | Unbound | Pure x3 yok | §3.6 |
 
-### 3.5 Harmony — x1+x1+x1 (1H melee)
+### 3.5 Harmony — x1+x1+x1
 
 +15 flat Status Potency.
+
+**Mantık (kilit):** Harmony = Main **×1** + Off **×1** + Chest **×1**, üç farklı non-Neutral element. Main ağırlığı **×2** olan hiçbir silah (tüm **2H melee**, **Staff**, **Bow**, **Crossbow**) bu banda **giremez** — matematiksel olarak 2+1+1 ≠ 1+1+1. Knot / Quiver tagsiz (×0) olduğu için 2H loadout’ta zaten üçüncü ×1 slot yok.
 
 ### 3.6 Unbound — Pure Neutral
 
@@ -135,7 +138,7 @@ Tetikleyen hedefte **her iki girdi silinir**. Sonra:
 
 - Kaynak hedef zincire dahil (zaten Wet tüketildi).
 - Potency/Resist: zincirlenen status **orijinal saldırganın** Potency'si ile hesaplanır.
-- Aynı frame'de bir hedefe yalnızca **bir** zincir status (önce Shock mu Poison mu — hangi reaksiyon tetiklendiyse o).
+- Aynı frame'de bir hedefe yalnızca **bir** zincir status. R2 ve R8 aynı Wet için yarışırsa **FIFO** — hangi status Wet çiftini önce tamamladıysa o zincir tetiklenir.
 
 ### 5.3 Wild Fire AoE (R9)
 
@@ -143,39 +146,49 @@ Tetikleyen hedefte **her iki girdi silinir**. Sonra:
 - Her **1s** tick: **8** stud yarıçap; çevredeki düşmanlara **yalnızca tick hasarı** (WildFire status yazılmaz).
 - Çevre hasarı: Resist uygulanır; matchup ve DR **yok**.
 
-### 5.4 Anlık reaksiyon çözümü (kilit v3)
+### 5.4 Batch-frame reaksiyon çözümü (kilit v4 — C yöntemi)
 
-**Öncelik tablosu yok.** Status geldikçe, o anda oluşabilecek **ilk geçerli çift** reaksiyona dönüşür; girdiler silinir; reaksiyonun kalıcı etkisi varsa o kalır.
+**Öncelik tablosu yok.** Eşleşen iki status varsa önceliğe bakmaksızın reaksiyon tetiklenir. Takım oyunu koordinasyona dayanır.
+
+#### Temel kural
+
+Aynı sunucu tick'inde (heartbeat / frame) bir hedefe gelen **tüm yeni status'ler** bir **batch** olarak toplanır ve tick sonunda topluca çözülür.
 
 #### Akış
 
 ```
-ApplyStatus(target, newStatus)
-  1. newStatus hedef listesine eklenir (uygulama sırası kaydı)
-  2. ReactionResolver: newStatus ile hedefteki MEVCUT status'leri
-     uygulama sırasına göre (eskiden yeniye) tara
-  3. İlk geçerli çift bulunursa:
-     a. İki girdi silinir
+OnTickEnd(target)
+  1. Bu tick'te hedefe eklenen tüm yeni status'leri BATCH listesine al
+  2. BATCH + hedefteki MEVCUT status'ler → tüm olası çiftleri bul
+  3. Bulunan HER geçerli çift için:
+     a. İki girdi silinir (batch'ten veya mevcut listeden)
      b. Reaksiyon hasarı / VFX anında
      c. Süreli çıktı varsa hedefe yazılır (Chilled, WildFire, Shock, …)
-  4. Başka çift yoksa veya newStatus tüketildiyse biter
-  5. newStatus tüketilmediyse (çift oluşmadıysa) hedefte kalır
+  4. Çift oluşturmayan status'ler hedefte kalır
 ```
 
-**Aynı vuruşta birden fazla status:** Her biri ayrı `ApplyStatus` — sırayla işlenir. Önce gelen çift önce patlar.
+**Aynı tick'te birden fazla reaksiyon:** Mümkün — paylaşılan girdi yoksa. Paylaşılan girdi varsa **FIFO** tek çift seçer.
 
-**Örnek:** Hedefte Wet. Sırayla Ignite, sonra Shock uygulanır:
-1. Ignite → Wet+Ignite → **Vaporize** (ikisi silinir)
-2. Shock → çift yok → **Shock** kalır
+**Çift seçimi (aynı status birden fazla adayla eşleşirse):** **FIFO** — aynı tick içinde `ApplyStatus` **uygulama sırası** (sunucu kayıt sırası). İlk gelen status, mevcut havuzla eşleşebildiği **ilk geçerli reaksiyonu** tetikler; paylaşılan girdi tüketilir. **R1–R10 tablo ID'si tiebreak için kullanılmaz.**
 
-**Örnek:** Hedefte Wet + Bleed (önce Wet). Ignite gelir:
-1. Wet+Ignite eşleşir (Bleed'den önce) → **Vaporize** · Bleed kalır
+#### Örnekler
 
-**Örnek:** Hedefte yalnızca Bleed. Ignite gelir → **Cauterize**.
+**Örnek 1:** Hedefte Wet. Bu tick'te Ignite gelir:
+- Wet+Ignite → **Vaporize** · ikisi silinir
 
-#### Çoklu aday (nadir)
+**Örnek 2 (FIFO — sıra kritik):** Hedefte Wet. Aynı tick'te Ignite + Shock gelir:
+- Sıra **Ignite → Shock:** Wet+Ignite = **Vaporize**; Shock çiftsiz kalır
+- Sıra **Shock → Ignite:** Wet+Shock = **Chain Shock**; Ignite çiftsiz kalır
 
-Aynı `ApplyStatus` anında birden fazla mevcut status ile çift mümkünse → hedefteki **en eski** status ile eşleş (uygulama sırası).
+**Örnek 3 (takım koordinasyonu):** Hedefte hiçbir şey yok. Oyuncu A: Wet, Oyuncu B: Ignite **aynı tick'te** uygular:
+- Batch FIFO sırasına göre Wet+Ignite → **Vaporize** — koordinasyon ödüllendirilir
+
+**Örnek 4 (bağımsız çiftler):** Hedefte Bleed. Aynı tick'te Ignite + Poisoned:
+- Bleed+Ignite = **Cauterize**; Poisoned çiftsiz kalır *(veya sıraya göre Bleed+Poisoned = Blight, Ignite kalır)* — FIFO
+
+**Örnek 5 (koordinasyon — farklı tick):** A: Wet (tick N), B: Shock (tick N+1), C: Ignite (tick N+1):
+- Tick N: Wet kalır
+- Tick N+1: batch FIFO sırası hangi status önce geldiyse o Wet ile eşleşir
 
 #### Thaw özel kuralı
 
@@ -195,4 +208,4 @@ Alan zinciri tetiklenince her etkilenen hedef için **ayrı** `ApplyStatus` (ken
 
 ---
 
-*Son güncelleme: 2026-07 — anlık reaksiyon §5.4 (v3); öncelik tablosu kaldırıldı.*
+*Son güncelleme: 2026-07 — reaksiyon §5.4 (v6); batch + FIFO örnekleri hizalı; R2/R8 FIFO.*

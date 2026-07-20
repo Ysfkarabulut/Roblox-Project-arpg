@@ -5,8 +5,10 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 | | |
 |--|--|
 | **Platform** | Roblox (hedef) |
+| **Oyuncu dili** | English (UI / items / abilities) |
+| **Tasarım** | Türkçe doküman + chat |
 | **Tema** | Low poly |
-| **Durum** | Combat çekirdeği kilitlendi — **kod yok** |
+| **Durum** | Combat tasarımı kilit · **lobby kod iskeleti başladı** |
 | **Repo** | [github.com/Ysfkarabulut/Roblox-Project-arpg](https://github.com/Ysfkarabulut/Roblox-Project-arpg) |
 
 ---
@@ -21,19 +23,34 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 | Element matchup, sinerji, reaksiyonlar | Kilitli (`CHEMISTRY_ENGINE.md`) |
 | **PvP / PvE modları, ranked** | Çerçeve kilit (`MODES.md`) |
 | İçerik (silah, boss, eşya) | Dolduruluyor |
-| Progression, loot, ekonomi | Açık (`GDD.md` §16) |
+| Progression, loot, ekonomi | Çerçeve kilit (`GDD.md` §10); sayılar TBD |
 | Playtest slice (eski MVP) | **En son faz** (`GDD.md` §14) |
-| Roblox implementasyonu | Henüz başlamadı |
+| Roblox implementasyonu | Lobby kabuğu (`src/`) · combat henüz yok |
+
+### Kod (Rojo)
+
+```
+src/shared/Config/   PlaceConfig, QueueConfig, ItemDefs, LoadoutSlots
+src/server/Lobby/    PartyService, QueueService, MatchTeleport
+src/server/Inventory/ InventoryService (UUID), LoadoutService
+src/client/Lobby/    LobbyClient stub
+src/client/Inventory/ GearUI + HotbarUI (Q E R 1 2 3, sürükle-bırak)
+```
+
+`rojo serve` / Studio sync ile bağla. PlaceId'leri `PlaceConfig.luau` içine yaz.  
+**UI:** `I` Inventory · `L` Loadout · `H` Active havuzu — hotbar her zaman altta.
+
 
 ---
 
 ## Üretim sırası
 
-1. **Mekanikler** — combat, status, kimya  
-2. **İçerik** — silahlar, eşyalar, boss'lar  
-3. **Modlar** — 1v1 / 2v2 / 3v3 arena + ranked; PvE boss  
-4. **Meta** — XP, loot, tutorial  
-5. **Playtest slice** — dış test (`MVP_CONTENT.md`)
+1. **Lobby kabuğu** — parti, queue, place teleport *(başladı)*  
+2. **Mekanikler** — combat, status, kimya  
+3. **İçerik** — silahlar, eşyalar, boss'lar  
+4. **Modlar** — arena place'leri + ranked MMR  
+5. **Meta** — XP, loot, tutorial  
+6. **Playtest slice** — dış test (`MVP_CONTENT.md`)
 
 ---
 
@@ -46,6 +63,7 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 | [`COMBAT_STAT_SHEET.md`](COMBAT_STAT_SHEET.md) | Statlar, hasar pipeline, guard/dodge |
 | [`STATUS_SYSTEM.md`](STATUS_SYSTEM.md) | Status kataloğu, ApplyStatus |
 | [`CHEMISTRY_ENGINE.md`](CHEMISTRY_ENGINE.md) | Element, sinerji, reaksiyonlar |
+| [`COMBAT_ARCHITECTURE.md`](COMBAT_ARCHITECTURE.md) | Roblox modül planı, pipeline kod eşlemesi, tutarsızlık listesi |
 | [`MVP_CONTENT.md`](MVP_CONTENT.md) | Playtest slice şablonu (son faz) |
 
 **Okuma sırası:** `GDD.md` → `MODES.md` → `COMBAT_STAT_SHEET.md` → `STATUS_SYSTEM.md` → `CHEMISTRY_ENGINE.md`
@@ -75,10 +93,10 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 
 `GDD.md` §16 · `MODES.md` §7 — öne çıkanlar:
 
-- Boss roster, eşya tabloları, XP/loot
-- Ranked MMR, sezon, tier
-- PvP timeout kuralı
-- Dungeon ekonomisi
+- Gaz DPS (30s ölüm hedefi), ranked MMR/puan delta
+- The Eye hasar sayıları, boss_02/03
+- + basma malzeme ve başarı oranları
+- Tutorial, 2v2/3v3 premade kuralı
 
 ---
 

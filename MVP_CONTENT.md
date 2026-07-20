@@ -4,7 +4,7 @@
 > **Sen dolduracaksın:** Aşağıdaki şablonlara kendi item isimlerini / sayılarını yaz.  
 > **Referans:** `GDD.md` §14 · `CHEMISTRY_ENGINE.md` · `COMBAT_STAT_SHEET.md` §11
 
-Oyuncu seviyesi MVP testi: **Lv30** (126 dağıtılabilir stat point).
+Oyuncu seviyesi MVP testi: **Lv30** (**116** dağıtılabilir stat point — `(30-1) × 4`; bkz. `COMBAT_STAT_SHEET.md` §12.1).
 
 ---
 
@@ -21,11 +21,13 @@ Test setin şunların **hepsini** tetikleyebilmeli:
 | M3 | Dodge + i-frame | Dodge input | [ ] |
 | M4 | Guard + chip | Shield + sağ tık | [ ] |
 | M5 | Guard break (pasif drain) | Guard açık stamina 0 → Slow 50% | [ ] |
-| M6 | Guard break (vuruş) | Axe vs guard → Stun 0.5s | [ ] |
+| M6 | Guard break (vuruş) | Axe vs guard → Stun 0.75s (debuff yok) | [ ] |
 | M7 | Stamina drain / regen | Sprint, guard, dodge | [ ] |
 | M8 | Crit | DEX/STR build veya bow | [ ] |
 | M9 | Element matchup | Farklı element silah vs chest | [ ] |
-| M10 | Measured Strike | 3. light attack bonus (sword) | [ ] |
+| M10 | Measured Strike | Sword L3 aile perk (global combo L1–L3 ayrı) | [ ] |
+| M15 | 3 vuruş combo (ranged) | Bow/Staff L1→L2→L3; Crossbow L3 reload | [ ] |
+| M16 | Combo movement | L1 %90 / L2 %75 / L3 %50 MS | [ ] |
 | M11 | Aktif yetenek | En az 1 silah aktifi | [ ] |
 | M12 | On-hit affix | Hand veya silah affix | [ ] |
 | M13 | Defence / DR | Chest + shield | [ ] |
@@ -35,10 +37,12 @@ Test setin şunların **hepsini** tetikleyebilmeli:
 
 | Silah | Test edilmeli | ✓ |
 |-------|---------------|---|
-| 1H Sword | Measured Strike | [ ] |
+| 1H Sword | Measured Strike L3 | [ ] |
 | 1H Axe | Anti-guard stamina | [ ] |
-| Staff | Projectile + Firebolt | [ ] |
-| Bow | Ranged + crit | [ ] |
+| Staff (2H) | Uzun menzil combo + Firebolt | [ ] |
+| Wand (1H) | Kısa menzil combo | [ ] |
+| Bow | L3 Focused Shot + crit | [ ] |
+| Crossbow | L3 Heavy Bolt + reload | [ ] |
 
 ---
 
@@ -101,8 +105,8 @@ Her reaksiyon için setinde **hangi slot/ yetenek** status vereceğini planla.
 | **Off** | | | Defence: | |
 | **Chest** | | | Defence: · Resist: | |
 | **Hand** | | | | On hit: |
-| **Helmet** | | | | Aktif/Pasif: |
-| **Feet** | | | | Pasif: |
+| **Head** | | | | Aktif/Pasif: |
+| **Feets** | | | | Pasif: |
 
 ### 3.3 Stat dağılımı (Lv30)
 
@@ -116,7 +120,7 @@ Her reaksiyon için setinde **hangi slot/ yetenek** status vereceğini planla.
 |--------|-------------|-----|------|----------------|
 | Main aktif | | | | |
 | Off aktif | | | | |
-| Helmet | | | | |
+| Head | | | | |
 
 ### 3.5 On-hit uygulama sırası (reaksiyon sırası için)
 
@@ -138,14 +142,18 @@ Aynı vuruşta birden fazla status gelirse **bu sıra** geçerli (`CHEMISTRY_ENG
 |---|---------|---------|----------------|---|
 | T1 | Vaporize | Wet uygula → Ignite uygula | R1 burst; Wet+Ignite yok | [ ] |
 | T2 | Sıralı çoklu | Wet → Ignite → Shock (3 ayrı ApplyStatus) | Vaporize, sonra Shock kalır | [ ] |
-| T3 | Wet öncelik | Hedefte Wet+Bleed → Ignite | Vaporize (Wet eski); Bleed kalır | [ ] |
+| T3 | FIFO Wet çakışma | Hedefte Wet; aynı tick Ignite sonra Shock | Vaporize; Shock kalır | [ ] |
+| T3b | FIFO ters sıra | Hedefte Wet; aynı tick Shock sonra Ignite | Chain Shock; Ignite kalır | [ ] |
 | T4 | Cauterize | Bleed → Ignite | R5; Bleed+Ignite yok | [ ] |
 | T5 | Chilled → Thaw | Wet+Windy → Chilled; sonra Ignite | R3, sonra R4 Thaw penceresi | [ ] |
 | T6 | Chain Shock | 2 hedef Wet; birine Shock | R2; menzil 12 stud | [ ] |
 | T7 | Guard chip | Bow/axe vs Kite guard | Chip after_dr; stamina düşer | [ ] |
 | T8 | Dodge i-frame | Dodge + gelen vuruş | 0 hasar | [ ] |
-| T9 | Measured Strike | 3 light sword | 3. hit +35% | [ ] |
-| T10 | Matchup | Fire silah vs Water chest | ×0.85 hasar | [ ] |
+| T9 | Measured Strike | Sword L1→L2→L3; L3 ×1.35 × global ×1.10 | [ ] |
+| T10 | Bow L3 | Focused Shot anim + bonus | [ ] |
+| T11 | Crossbow L3 reload | L3 ×1.40 + ~1.2s reload; combo reset | [ ] |
+| T12 | Matchup | Fire silah vs Water chest | ×0.85 hasar | [ ] |
+| T13 | Scepter cone | Cone içinde 2–3 hedef | max 3; on-hit hedef başına 1× | [ ] |
 
 ---
 
@@ -178,4 +186,4 @@ Kendi setini yazana kadar geçici referans. **Senin tam setin bunların yerini a
 
 ---
 
-*Son güncelleme: 2026-07 — tam test seti şablonu; reaksiyon §5.4 uygulama sırası.*
+*Son güncelleme: 2026-07 — test senaryoları FIFO/cone; TTK/k_dmg sheet ile hizalı.*

@@ -4,7 +4,7 @@
 >
 > **Reaksiyonlar:** `CHEMISTRY_ENGINE.md` — `ApplyStatus` içinde `ReactionResolver`.
 >
-> **Son güncelleme:** 2026-07 — katalog v1 + reaksiyon türevleri.
+> **Son güncelleme:** 2026-07 — katalog v1; Knockback §3.1e; batch+FIFO; guard break Stun 0.75s.
 
 ---
 
@@ -85,7 +85,7 @@ Element tag: **matchup** = Main Hand → hedef Chest · **sinerji ağırlığı*
 | Rock | Slow | 3s · %50 slow |
 | Neutral | — | — |
 
-*Element kod adı: **Lightning** (UI'da Electric kullanılabilir).*
+*Element kod adı: **Lightning** (UI dahil — Electric kullanılmaz).*
 
 ---
 
@@ -104,6 +104,7 @@ Element tag: **matchup** = Main Hand → hedef Chest · **sinerji ağırlığı*
 | **Slow** | Affix / guard break | Slow **%50** | 50% | Evet | Guard break aynı ID |
 | **Stun** | Parry perfect, yetenek, boss | Hard CC | 0% | Hayır | Süre kaynağa göre değişir (ör. parry → 1s) |
 | **Root** | Yetenek, Focus tarzı eşya, trap | **Root** — hareket yok | **0%** | **Evet** | Saldırı / yetenek açık; Shock/Stun değil |
+| **Knockback** | Yetenek (ör. Grand Strike) | Anlık **ileri itme** + kısa kilit | 0% (itme süresince) | Hayır (kısa) | §3.1e · süre ~**0.25–0.4s**; mesafe `params.distance` |
 
 ### 3.1b Reaksiyon türevleri (v1)
 
@@ -120,24 +121,108 @@ Element tag: **matchup** = Main Hand → hedef Chest · **sinerji ağırlığı*
 **Anlık / zincir:** Vaporize, **Chain Shock** (→ Shock), **Contamination** (→ Poisoned).  
 **Hibrit:** **Cauterize** — kısmi bleed burst + Cauterize DoT (Ignite tüketilir).
 
-**Shock vs Stun vs Root (kilit):** Shock/Stun/Chilled → hareket **ve** saldırı kapalı. **Root** → yalnızca hareket **0%**; saldırı ve yetenek açık.
+**Shock vs Stun vs Root (kilit):** Shock/Stun/Chilled → hareket **ve** saldırı kapalı. **Root** → yalnızca hareket **0%**; saldırı ve yetenek açık. **Knockback** → kısa süreli yer değiştirme + saldırı kapalı; Hard CC / Root ile aynı “CC altı” sayılmaz (Oppressor vb. listede ayrıca yazılmadıkça).
 
-### 3.1c Aynı anda birden fazla CC (hareket — reaksiyondan ayrı)
+### 3.1e Knockback (kilit)
 
-Bu tablo **reaksiyon çözümü değil** — farklı kaynaklardan gelen eşzamanlı CC'nin hareket/saldırı okuması içindir (`CanMove`, `CanAttack`).
+Anlık yer değiştirme — klasik DoT/CC süresi değil; kısa status + fizik itme.
+
+| Alan | Değer |
+|------|--------|
+| ID | **Knockback** |
+| Süre | **0.35s** (anim / i-frame kilidi; playtest) |
+| Hareket | Oyuncu kontrolü **yok**; sunucu `params.distance` + `params.direction` ile iter |
+| Saldırı | **Kapalı** (kısa) |
+| Mesafe | Yetenekten gelir (ör. Grand Strike **~8** stud) |
+| Diminishing | Aynı kaynak §3.1d (spam itme) |
+| Resist | **Süreye** uygulanır; mesafe Resist’ten **etkilenmez** (v1) |
+| Boss | Birçok boss **Knockback immune** (*item/boss tier*) |
+
+```
+ApplyStatus(target, "Knockback", {
+  source, abilityId,
+  params = { distance = 8, direction = lookVector }
+})
+-- Handler: sunucu pozisyon offset + kısa CanMove/CanAttack false
+```
+
+### 3.1c Aynı anda farklı CC türleri (kilit)
+
+Farklı status ID veya farklı kaynak — hareket/saldırı okuması (`CanMove`, `CanAttack`):
 
 | Katman | Kurallar |
 |--------|----------|
-| **Hard CC** (Stun, Shock, Chilled) | Move **0%** · Attack **kapalı** · en uzun süre kalır |
-| **Root** | Hard CC aktifken yok sayılır |
+| **Hard CC** (Stun, Shock, Chilled) | Move **0%** · Attack **kapalı** · **en uzun süre** geçerli |
+| **Knockback** | Aktifken Hard CC gibi attack kapalı; bitince diğer katmanlar |
+| **Root** | Hard CC veya Knockback aktifken yok sayılır |
 | **Slow** | `move_mult = min(aktif slow çarpanları)` |
-| **Refresh** | Aynı ID → `max(kalan, yeni)` süre |
+
+### 3.1d Aynı CC — aynı kaynak, diminishing (kilit)
+
+**Aynı status ID** + **aynı kaynak** (aynı `playerId` / `abilityId`) üst üste uygulanınca süre **yarıya iner** (spam önleme):
+
+```
+applied_duration = base_duration × 0.5^(n - 1)
+```
+
+| n (aynı kaynaktan kaçıncı uygulama) | Örnek (base Stun 1s) |
+|-------------------------------------|----------------------|
+| 1 | **1.0s** |
+| 2 | **0.5s** |
+| 3 | **0.25s** |
+| 4 | **0.125s** |
+
+- Sayaç: hedef + statusId + sourceId için; status **tamamen bitince** sıfırlanır.
+- **Farklı kaynak** aynı tür: §3.1c — en uzun süre kazanır (diminishing **yok**).
+- Potency / Resist: `applied_duration` hesaplandıktan sonra uygulanır.
 
 ### 3.2 Buff
 
 | ID | Kaynak | Etki | Süre |
 |----|--------|------|------|
-| **Frenzied** | Eşya / yetenek | +%20 Attack Speed, Move Speed, Damage | Eşyeye göre; Buff Potency süreyi uzatır |
+| **Frenzied** | Eşya / yetenek | +%20 Attack Speed, Move Speed, Damage | Eşyaya göre; Buff Potency süreyi uzatır |
+| **Fortify** | Yetenek / item (Stone Armor, ileride Poison Armor vb.) | Alınan **direct** hasar azalır | Kaynağa göre; Buff Potency süre |
+| **Thorn** | Ekipman (Thornplate chest) | Direct HP hasarını saldırgana yansıt | **Süresiz** (equip); unequip → remove |
+
+**Fortify (kilit — genel % mitigation buff):**
+
+Tek status ID; güç `params` ile gelir (her item aynı “StoneArmor” diye ayrı status açmaz).
+
+```
+params.damageTakenMult = 0.85   -- −15% Direct (ör. Stone Armor)
+-- veya
+params.damageTakenMult = 0.90   -- −10% (ör. başka zırh)
+```
+
+| Kural | Değer |
+|-------|--------|
+| Pipeline | Defence DR **sonrası**: `hpDamage = after_dr × damageTakenMult` |
+| Kapsam | Yalnızca **Direct** (LA + yetenek patlaması) |
+| Uygulanmaz | DoT, Environmental, Execute, Guard chip |
+| Stack | Aynı anda **tek** Fortify — yeni uygulama **süre refresh**; `damageTakenMult` = **daha güçlü** (daha düşük çarpan) kazanır |
+| Resist | Hedef Resist’i yok (self buff) |
+
+Örnek: Stone Armor → `ApplyStatus(self, "Fortify", { duration = 4, params = { damageTakenMult = 0.85 } })`.
+
+### 3.2b Thorn (kalıcı ekipman status’ü)
+
+**Thorn** = chest takılıyken **süresiz** self status (bitmez; unequip → remove). Yetenek CD’si yok — loadout aura.
+
+```
+OnEquip(chest with Thorn)  → ApplyStatus(self, "Thorn", { expiresAt = nil, source = itemUuid })
+OnUnequip                 → RemoveStatus(self, "Thorn", source = itemUuid)
+```
+
+| Alan | Değer (temsili) |
+|------|-----------------|
+| Tetik | Sana isabet eden **Direct** (LA / yetenek patlaması) **HP’ye** işlediyse |
+| Yansıma | `reflect = after_dr × 0.15` → saldırgana **Direct** |
+| Crit / on-hit / matchup | Reflect’te **yok** |
+| Guard **chip** | Yansıma **yok** |
+| DoT / Environmental | Yansıma **yok** |
+| Zincir | Reflect’ten tekrar Thorn **yok** (1 hop) |
+
+*UI: kalıcı status ikonu (Thorn) — “pasif yetenek” listesinde de görünür ama motor status’tur.*
 
 ### 3.3 Stance (self — combat mekaniği)
 
@@ -167,7 +252,19 @@ Bunlar da Status'tur; düşman Resist'inden geçmez. Detaylar `GDD.md` §7–8.
 | `k_pot_duration` | **0.004** | Potency 60 → +24% süre |
 | `C_res` | **165** | Resist eğrisi → `COMBAT_STAT_SHEET.md` |
 | DoT vs Defence | **DR uygulanmaz** | Yalnızca Resist hasarı kısaltır |
-| Yenileme | Süre **refresh** | Aynı DoT stack yok; DPS affix toplamı |
+| Yenileme | Süre **refresh** | Aynı DoT **stack yok** (×2 Ignite yok); süre yenilenir; DPS = base + Σ affix |
+
+**Kaynak fark etmez:** Yetenek, on-hit affix, Pure x3, reaksiyon çıktısı — hepsi aynı `ApplyStatus("Ignite", …)`. Hedefte tek **Ignite** instance.
+
+| Durum | Sonuç |
+|-------|--------|
+| Yetenek Ignite → sonra on-hit Ignite | **Tek** Ignite; süre **refresh**; DPS affix’ler toplanır |
+| On-hit Ignite → yetenek Ignite | Aynı |
+| Ignite (herhangi kaynak) + Poisoned (on-hit veya yetenek) | İkisi de hedefte → **reaksiyon** (R10 Caustic Burn) — kaynak ayrımı **yok** |
+| Ignite + Wet | **Vaporize** (batch/FIFO) |
+
+*Reaksiyon motoru status **ID** çiftlerine bakar; “bu Ignite yetenekten mi affix’ten mi” diye ayırmaz.*
+
 
 **DoT rolü (tek uygulama, 0 resist) — v1 kilit:**
 
@@ -200,7 +297,7 @@ Bunlar da Status'tur; düşman Resist'inden geçmez. Detaylar `GDD.md` §7–8.
 | Tetik | Status | Süre |
 |-------|--------|------|
 | Pasif drain → stamina 0 | **Slow 50%** | **3s** veya stamina ≥ **10%** max (önce olan) |
-| Vuruş → stamina 0 | **Stun** (guard break) | **0.5s** |
+| Vuruş → stamina 0 | **Stun** (guard break) | **0.75s** — ekstra hasar debuff **yok** |
 
 ---
 
@@ -241,7 +338,8 @@ remaining_dot_damage = floor(remaining_seconds / tick_interval) × current_dps �
 | Status | Süre | Etki | Kaynak |
 |--------|------|------|--------|
 | **Stun** (parry perfect) | **1.0s** | Hard CC | Parry |
-| **Stun** (guard break) | **0.5s** | Hard CC | Stamina 0 + vuruş |
+| **Stun** (guard break) | **0.75s** | Hard CC | Stamina 0 + vuruş; **+incoming% debuff yok** |
+| **Knockback** | **0.35s** | İtme + kısa attack lock | Yetenek `params.distance` (ör. 8 stud) |
 | **Frenzied** | **6s** (eşya base) | +**%20** AS, MS, Damage | Eşya; Buff Potency süre |
 | **Dodge** (i-frame) | **0.25s** | Invulnerable | Dodge input |
 | **Parry** (pencere) | **0.35s** | Perfect negate | Sağ tık stance |
@@ -298,12 +396,12 @@ ApplyStatus(target, id, ctx)
   3. if def.category == Debuff → duration = CalcDuration(ctx, attacker Potency, target Resist)
   4. if def.category == Stance → skip Resist; params from combat action
   5. Status hedef listesine eklenir (uygulama sırası kaydı)
-  6. REACTION_HOOK → anlık çözüm (`CHEMISTRY_ENGINE.md` §5.4)
+  6. REACTION_HOOK → **batch queue** (tick sonunda `ResolveBatch` — `CHEMISTRY_ENGINE.md` §5.4)
   7. OnApplied hooks (VFX, UI icon, stat recompute)
   8. Publish replication event
 ```
 
-**Reaksiyon:** İlk geçerli çift → girdiler silinir → çıktı kalır. Öncelik tablosu yok; sıra = uygulama sırası.
+**Reaksiyon:** Batch-frame — aynı tick'teki yeni status'ler tick **sonunda** çözülür. Paylaşılan girdi çakışmasında **FIFO**. Anlık `TryResolve` **yok**. Detay → `CHEMISTRY_ENGINE.md` §5.4.
 
 ### 6.2 Kaynak tipleri (SourceType)
 
@@ -314,7 +412,8 @@ ApplyStatus(target, id, ctx)
 | `Item` | Proc / kullanım | Frenzied flask |
 | `CombatAction` | Guard / Parry / Dodge | Self stance |
 | `Reaction` | İki status birleşimi | Vaporize, Blight, … |
-| `Environment` | Alan, hazard | Su havuzu → Wet |
+| `Environment` | Alan hazard — **Environmental** hasar | PvP gaz, boss aura, Monolith aura |
+| `Execute` | Tek atış ölüm | Monolith crush, Gaze wipe — DR yok, HP=0 |
 
 Yeni kaynak eklemek = yeni çağrı yeri; **registry değişmez** (aynı `Ignite`).
 
