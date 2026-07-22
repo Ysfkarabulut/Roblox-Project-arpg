@@ -1,6 +1,6 @@
 --[[
 	HotbarService — aktif yetenek bağları (abilityId → slot 1..6).
-	Pasifler burada yok. Bind'ler oturum içi; DataStore sonra.
+	Main WeaponFrame abilities come from resolved blade.
 ]]
 
 local Players = game:GetService("Players")
@@ -9,9 +9,10 @@ local HotbarConfig = require(game.ReplicatedStorage.Shared.Config.HotbarConfig)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
 local LoadoutSlots = require(game.ReplicatedStorage.Shared.Config.LoadoutSlots)
 
-export type HotbarBinds = { [number]: string? } -- slot → abilityId
+export type HotbarBinds = { [number]: string? }
 
 local HotbarService = {}
 
@@ -32,11 +33,31 @@ local function ensure(userId: number): HotbarBinds
 	return bindsByUser[userId]
 end
 
--- Loadout'taki tüm Active ability id'leri (kaynak item uuid ile)
 function HotbarService.GetAvailableActives(userId: number): { { abilityId: string, name: string, desc: string, sourceUuid: string, defId: string } }
 	local out = {}
 	local loadout = LoadoutService.Get(userId)
+
+	if loadout.main then
+		local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
+		if resolved and resolved.complete and resolved.abilities then
+			for _, ab in resolved.abilities do
+				if ab.slotType == "Active" then
+					table.insert(out, {
+						abilityId = ab.id,
+						name = ab.name,
+						desc = ab.desc,
+						sourceUuid = loadout.main,
+						defId = "weapon_frame",
+					})
+				end
+			end
+		end
+	end
+
 	for _, slotId in LoadoutSlots.Order do
+		if slotId == "main" then
+			continue
+		end
 		local uuid = (loadout :: any)[slotId] :: string?
 		if uuid then
 			local inst = InventoryService.Find(userId, uuid)
@@ -77,7 +98,6 @@ function HotbarService.GetBinds(userId: number): HotbarBinds
 	return copy
 end
 
--- Loadout değişince geçersiz bind'leri temizle
 function HotbarService.Prune(userId: number)
 	local b = ensure(userId)
 	for i = 1, HotbarConfig.SlotCount do
@@ -96,7 +116,6 @@ function HotbarService.Bind(userId: number, abilityId: string, slotIndex: number
 		return false, "NotAvailable"
 	end
 	local b = ensure(userId)
-	-- Aynı ability başka slottan düşsün
 	for i = 1, HotbarConfig.SlotCount do
 		if b[i] == abilityId then
 			b[i] = nil
@@ -114,7 +133,6 @@ function HotbarService.Unbind(userId: number, slotIndex: number): (boolean, stri
 	return true, nil
 end
 
---- Boş hotbar slotlarına loadout Actives'i sırayla doldur (proto QoL)
 function HotbarService.AutoFill(userId: number): number
 	HotbarService.Prune(userId)
 	local b = ensure(userId)

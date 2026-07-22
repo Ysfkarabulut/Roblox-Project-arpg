@@ -7,15 +7,17 @@ local Workspace = game:GetService("Workspace")
 
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
-local ElementData = require(game.ReplicatedStorage.Shared.Config.ElementData)
 local WeaponFamilyConfig = require(game.ReplicatedStorage.Shared.Config.WeaponFamilyConfig)
 local DamagePipeline = require(game.ReplicatedStorage.Shared.Combat.DamagePipeline)
 
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 local StatService = require(script.Parent.StatService)
 local ComboTracker = require(script.Parent.ComboTracker)
 local DamageService = require(script.Parent.DamageService)
+local PassiveService = require(script.Parent.PassiveService)
 local DummyService = require(script.Parent.DummyService)
 local StatusService = require(script.Parent.StatusService)
 local GuardService = require(script.Parent.GuardService)
@@ -25,13 +27,16 @@ local LightAttackService = {}
 
 local recoveryUntil: { [number]: number } = {}
 
-local function getMainDef(userId: number)
+local function getResolvedMain(userId: number)
 	local loadout = LoadoutService.Get(userId)
 	if not loadout.main then
 		return nil
 	end
-	local inst = InventoryService.Find(userId, loadout.main)
-	return inst and ItemDefs.Get(inst.defId), loadout.main
+	local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
+	if not resolved or not resolved.complete then
+		return nil
+	end
+	return resolved
 end
 
 local function scaling(userId: number, def: any): number
@@ -138,6 +143,9 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 	if t < (recoveryUntil[userId] or 0) then
 		return { ok = false, reason = "Recovery" }
 	end
+	if typeof(lookVector) == "Vector3" and lookVector.Magnitude > 1.5 then
+		lookVector = lookVector.Unit
+	end
 	if not player.Character then
 		return { ok = false, reason = "NoChar" }
 	end
@@ -148,10 +156,14 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 		return { ok = false, reason = "Defending" }
 	end
 
-	local def = getMainDef(userId)
+	local resolved = getResolvedMain(userId)
+	if not resolved then
+		return { ok = false, reason = "NoWeapon" }
+	end
+	local def = WeaponResolver.AsItemDef(resolved)
 	local family = WeaponFamilyConfig.Resolve(def)
 	local stats = StatService.Get(userId)
-	local recovery = DamagePipeline.HitRecovery(def and def.asTier, stats.DEX)
+	local recovery = DamagePipeline.HitRecovery(def.asTier, stats.DEX) / (def.attackSpeedMult or 1)
 	recoveryUntil[userId] = t + recovery
 
 	local step = ComboTracker.PeekStep(userId)
@@ -168,7 +180,7 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 			fx = {
 				anim = family.animPrefix .. "_L" .. step,
 				vfx = if family.laShape == "Projectile" then "Bolt" else "Slash",
-				element = def and def.element or "Neutral",
+				element = resolved.element or "Neutral",
 				family = family.animPrefix,
 				comboStep = step,
 				origin = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and (player.Character.HumanoidRootPart :: BasePart).Position,
@@ -180,26 +192,18 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 
 	local usedStep = ComboTracker.CommitHit(userId)
 	local familyPerk = WeaponFamilyConfig.L3PerkMult(def, usedStep)
-	local base = (def and def.baseDamage) or CombatConfig.DefaultWeaponBase
+	local base = resolved.baseDamage
 	local scale = scaling(userId, def)
-	local el = def and def.element or "Neutral"
-	local sig = ElementData.Signature[el]
-	local axeMult = if def and def.family == "Axe" then CombatConfig.AxeGuardStamMult else 1
+	local el = resolved.element or "Neutral"
 
 	local hits = {}
 	for _, target in targets do
 		local backstab = 1
-		if def and def.family == "Dagger" and target:IsA("Model") and isBackstab(player, target) then
+		if def.family == "Dagger" and target:IsA("Model") and isBackstab(player, target) then
 			backstab = CombatConfig.KBackstab
 		end
-		local onHit = nil
-		-- Pure signature on LA only if we want proto feedback — optional light proc skipped;
-		-- use element signature as soft on-hit for readability in lobby (15% later). For proto: always apply short status for chemistry testing on L3 only
-		if usedStep == 3 and sig and sig.id then
-			local dur = if el == "Lightning" then 0.5 elseif el == "Steel" then 8 elseif el == "Poison" then 5 elseif el == "Water" then 5 elseif el == "Wind" then 3 elseif el == "Rock" then 2 else 3
-			local dps = if el == "Steel" then 4 elseif el == "Poison" then 3 elseif el == "Fire" then 7 else nil
-			onHit = { id = sig.id, duration = dur, dps = dps }
-		end
+		local onHit = PassiveService.RollLaOnHitStatus(userId, usedStep, el)
+		local axeMult = if def.family == "Axe" then CombatConfig.AxeGuardStamMult else 1
 
 		local report = DamageService.DealDirect({
 			attacker = player,
@@ -215,6 +219,33 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 			applyOnHitStatus = onHit,
 		})
 		table.insert(hits, report)
+	end
+
+	-- Dual wield off-hand proc (50% damage, GDD §7)
+	local loadout = LoadoutService.Get(userId)
+	if loadout.off and #targets > 0 then
+		local offInst = InventoryService.Find(userId, loadout.off)
+		local offDef = offInst and ItemDefs.Get(offInst.defId)
+		local dualKinds = { Weapon1H = true, Wand = true, Scepter = true }
+		if offDef and dualKinds[offDef.kind] then
+			local offBase = (offDef.baseDamage or CombatConfig.DefaultWeaponBase) * CombatConfig.OffHandDamageMult
+			local offScale = scaling(userId, offDef)
+			for _, target in targets do
+				local offReport = DamageService.DealDirect({
+					attacker = player,
+					target = target,
+					weaponBase = offBase,
+					scalingStat = offScale,
+					atkElement = offDef.element or el,
+					comboStep = usedStep,
+					familyPerkMult = 1,
+					backstabMult = 1,
+					axeGuardMult = 1,
+					kind = "LA",
+				})
+				table.insert(hits, offReport)
+			end
+		end
 	end
 
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?

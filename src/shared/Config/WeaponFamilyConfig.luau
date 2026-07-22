@@ -3,6 +3,7 @@
 ]]
 
 local CombatConfig = require(script.Parent.CombatConfig)
+local DamagePipeline = require(script.Parent.Parent.Combat.DamagePipeline)
 
 local WeaponFamilyConfig = {}
 
@@ -155,6 +156,14 @@ function WeaponFamilyConfig.L3PerkMult(def: any, step: number): number
 	local info = WeaponFamilyConfig.Resolve(def)
 	local is2H = def and def.kind == "Weapon2H"
 	return info.l3Perk(def and def.kind, is2H)
+end
+
+--- Effective attack speed mult including pommel (modular weapons)
+function WeaponFamilyConfig.AttackSpeedMult(def: any, dex: number): number
+	local tier = def and def.asTier or "B"
+	local base = DamagePipeline.AttackSpeedMult(tier, dex)
+	local pommelMult = def and def.attackSpeedMult or 1
+	return base * pommelMult
 end
 
 return WeaponFamilyConfig

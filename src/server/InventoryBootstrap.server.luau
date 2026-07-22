@@ -1,5 +1,5 @@
 --[[
-	Inventory + Loadout + Hotbar remotes.
+	Inventory + Loadout + Hotbar + WeaponAssembly remotes.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -7,10 +7,13 @@ local Players = game:GetService("Players")
 
 local InventoryService = require(script.Parent.Inventory.InventoryService)
 local LoadoutService = require(script.Parent.Inventory.LoadoutService)
+local WeaponAssemblyService = require(script.Parent.Inventory.WeaponAssemblyService)
 local HotbarService = require(script.Parent.Hotbar.HotbarService)
 local StatService = require(script.Parent.Combat.StatService)
+local PassiveService = require(script.Parent.Combat.PassiveService)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "InventoryRemotes"
@@ -37,14 +40,17 @@ local BindAbility = remoteEvent("BindAbility")
 local UnbindHotbar = remoteEvent("UnbindHotbar")
 local DiscardItem = remoteEvent("DiscardItem")
 local InventoryUpdated = remoteEvent("InventoryUpdated")
+local InstallWeaponPart = remoteEvent("InstallWeaponPart")
+local RemoveWeaponPart = remoteEvent("RemoveWeaponPart")
+local SocketGem = remoteEvent("SocketGem")
+local UnsocketGem = remoteEvent("UnsocketGem")
+local CreateWeaponFrame = remoteEvent("CreateWeaponFrame")
 
 local function resolveStance(userId: number): string
 	local loadout = LoadoutService.Get(userId)
-	local mainDef, offDef = nil, nil
-	if loadout.main then
-		local inst = InventoryService.Find(userId, loadout.main)
-		mainDef = inst and ItemDefs.Get(inst.defId)
-	end
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	local mainDef = if resolved and resolved.complete then WeaponResolver.AsItemDef(resolved) else nil
+	local offDef = nil
 	if loadout.off then
 		local inst = InventoryService.Find(userId, loadout.off)
 		offDef = inst and ItemDefs.Get(inst.defId)
@@ -52,26 +58,41 @@ local function resolveStance(userId: number): string
 	return StanceConfig.Resolve(mainDef, offDef)
 end
 
-local function syncStance(player: Player)
-	local stance = resolveStance(player.UserId)
-	player:SetAttribute("CombatStance", stance)
+local function buildResolvedSummary(userId: number)
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	if not resolved or not resolved.complete then
+		return nil
+	end
+	return {
+		displayName = resolved.displayName,
+		element = resolved.element,
+		baseDamage = resolved.baseDamage,
+		kind = resolved.kind,
+		family = resolved.family,
+		scaling = resolved.scaling,
+		attackSpeedMult = resolved.attackSpeedMult,
+		complete = resolved.complete,
+	}
 end
 
 local function buildSnapshot(userId: number)
 	HotbarService.Prune(userId)
+	PassiveService.Refresh(userId)
 	return {
 		items = InventoryService.GetItems(userId),
 		loadout = LoadoutService.Get(userId),
 		hotbar = HotbarService.GetBinds(userId),
 		actives = HotbarService.GetAvailableActives(userId),
+		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),
 		derived = StatService.Derived(userId),
 		stance = resolveStance(userId),
+		resolvedMain = buildResolvedSummary(userId),
 	}
 end
 
 local function push(player: Player)
-	syncStance(player)
+	player:SetAttribute("CombatStance", resolveStance(player.UserId))
 	InventoryUpdated:FireClient(player, buildSnapshot(player.UserId))
 end
 
@@ -131,6 +152,9 @@ DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
 		return
 	end
 	local userId = player.UserId
+	if InventoryService.IsInstalled(userId, uuid) then
+		return
+	end
 	local slot = LoadoutService.GetSlotOf(userId, uuid)
 	if slot then
 		LoadoutService.Unequip(userId, slot)
@@ -144,11 +168,77 @@ DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
 	push(player)
 end)
 
+InstallWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: string, partUuid: string, slot: string)
+	if typeof(frameUuid) ~= "string" or typeof(partUuid) ~= "string" or typeof(slot) ~= "string" then
+		return
+	end
+	local ok, err = WeaponAssemblyService.InstallPart(player.UserId, frameUuid, partUuid, slot)
+	if not ok then
+		warn("[Assembly] Install failed", player.Name, err)
+	end
+	HotbarService.Prune(player.UserId)
+	if _G.RefreshWeaponVisuals then
+		_G.RefreshWeaponVisuals(player)
+	end
+	push(player)
+end)
+
+RemoveWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: string, slot: string)
+	if typeof(frameUuid) ~= "string" or typeof(slot) ~= "string" then
+		return
+	end
+	WeaponAssemblyService.RemovePart(player.UserId, frameUuid, slot)
+	HotbarService.Prune(player.UserId)
+	if _G.RefreshWeaponVisuals then
+		_G.RefreshWeaponVisuals(player)
+	end
+	push(player)
+end)
+
+SocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, gemUuid: string)
+	if typeof(frameUuid) ~= "string" or typeof(gemUuid) ~= "string" then
+		return
+	end
+	WeaponAssemblyService.SocketGem(player.UserId, frameUuid, gemUuid)
+	if _G.RefreshWeaponVisuals then
+		_G.RefreshWeaponVisuals(player)
+	end
+	push(player)
+end)
+
+UnsocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string)
+	if typeof(frameUuid) ~= "string" then
+		return
+	end
+	WeaponAssemblyService.UnsocketGem(player.UserId, frameUuid)
+	if _G.RefreshWeaponVisuals then
+		_G.RefreshWeaponVisuals(player)
+	end
+	push(player)
+end)
+
+CreateWeaponFrame.OnServerEvent:Connect(function(player: Player)
+	WeaponAssemblyService.CreateFrame(player.UserId)
+	push(player)
+end)
+
 Players.PlayerAdded:Connect(function(player)
 	task.defer(function()
-		if player.Parent then
-			push(player)
+		if not player.Parent then
+			return
 		end
+		local userId = player.UserId
+		local lo = LoadoutService.Get(userId)
+		if not lo.main then
+			for _, item in InventoryService.GetItems(userId) do
+				if item.defId == "weapon_frame" and item.parts and item.parts.handle and item.parts.blade and item.parts.pommel then
+					LoadoutService.Equip(userId, item.uuid, "main")
+					HotbarService.AutoFill(userId)
+					break
+				end
+			end
+		end
+		push(player)
 	end)
 end)
 
@@ -156,4 +246,4 @@ for _, player in Players:GetPlayers() do
 	push(player)
 end
 
-print("[InventoryBootstrap] Inventory + Hotbar ready")
+print("[InventoryBootstrap] Inventory + Hotbar + Assembly ready")

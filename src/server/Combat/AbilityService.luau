@@ -12,6 +12,8 @@ local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local HotbarService = require(script.Parent.Parent.Hotbar.HotbarService)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 local StatService = require(script.Parent.StatService)
 local StatusService = require(script.Parent.StatusService)
 local DamageService = require(script.Parent.DamageService)
@@ -36,9 +38,21 @@ local function readyMap(userId: number)
 	return cooldowns[userId]
 end
 
-local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, any?)
+local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, any?, string?)
 	local loadout = LoadoutService.Get(userId)
-	for _, slotId in { "main", "off", "head", "chest", "hands", "feets" } do
+
+	if loadout.main then
+		local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
+		if resolved and resolved.complete and resolved.abilities then
+			for _, ab in resolved.abilities do
+				if ab.id == abilityId and ab.slotType == "Active" then
+					return ab, WeaponResolver.AsItemDef(resolved), resolved.element
+				end
+			end
+		end
+	end
+
+	for _, slotId in { "off", "head", "chest", "hands", "feets" } do
 		local uuid = loadout[slotId]
 		if uuid then
 			local inst = InventoryService.Find(userId, uuid)
@@ -46,13 +60,13 @@ local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, a
 			if def and def.abilities then
 				for _, ab in def.abilities do
 					if ab.id == abilityId and ab.slotType == "Active" then
-						return ab, def
+						return ab, def, def.element
 					end
 				end
 			end
 		end
 	end
-	return nil, nil
+	return nil, nil, nil
 end
 
 local function isBound(userId: number, abilityId: string): boolean
@@ -89,8 +103,11 @@ local function getMainWeaponDef(userId: number): any?
 	if not loadout.main then
 		return nil
 	end
-	local inst = InventoryService.Find(userId, loadout.main)
-	return inst and ItemDefs.Get(inst.defId)
+	local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
+	if resolved and resolved.complete then
+		return WeaponResolver.AsItemDef(resolved)
+	end
+	return nil
 end
 
 local function characterRoot(player: Player): BasePart?
@@ -186,12 +203,12 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 	if not isBound(userId, abilityId) then
 		return { ok = false, reason = "NotBound" }
 	end
-	local abDef, itemDef = findAbilityOnLoadout(userId, abilityId)
+	local abDef, itemDef, frameElement = findAbilityOnLoadout(userId, abilityId)
 	if not abDef then
 		return { ok = false, reason = "NotEquipped" }
 	end
 
-	local element = itemDef and itemDef.element or "Neutral"
+	local element = frameElement or (itemDef and itemDef.element) or "Neutral"
 	local spec = AbilityRuntime.Get(abilityId, element, abDef.cooldownSec)
 	local cd = spec.cooldownSec
 	local map = readyMap(userId)

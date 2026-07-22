@@ -4,6 +4,7 @@
 ]]
 
 local ElementData = require(script.Parent.ElementData)
+local PassiveDefs = require(script.Parent.PassiveDefs)
 
 local WeaponMatrix = {}
 
@@ -52,22 +53,12 @@ local function activeStatus(el: string, pct: number, shape: string): any
 	}
 end
 
-local function passiveStatus(el: string, flavor: string): any
+local function passiveStatus(el: string, _flavor: string): any
 	local s = sig(el)
 	if s.id then
-		return {
-			id = `mx_{ElementData.Lower[el]}_edge`,
-			name = `{s.label} Edge`,
-			slotType = "Passive",
-			desc = `{flavor} · light-attack hit: 15% chance {s.short}`,
-		}
+		return PassiveDefs.AbilitySlot("status_weaponpassive", `{s.label} Edge`)
 	end
-	return {
-		id = "mx_neutral_edge",
-		name = "Unbound Edge",
-		slotType = "Passive",
-		desc = `{flavor} · Direct +3% (Unbound-friendly)`,
-	}
+	return PassiveDefs.AbilitySlot("direct_weaponpassive", "Unbound Edge")
 end
 
 local function passiveUtility(el: string, text: string): any

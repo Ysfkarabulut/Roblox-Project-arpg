@@ -8,6 +8,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
+local LegacyWeaponConverter = require(ReplicatedStorage.Shared.Config.LegacyWeaponConverter)
 local InventoryService = require(script.Parent.Inventory.InventoryService)
 local LoadoutService = require(script.Parent.Inventory.LoadoutService)
 local HotbarService = require(script.Parent.Hotbar.HotbarService)
@@ -103,17 +104,21 @@ GrantItem.OnServerEvent:Connect(function(player: Player, defId: string, count: n
 	if typeof(defId) ~= "string" then
 		return
 	end
-	if not ItemDefs.Get(defId) then
+	if not ItemDefs.Get(defId) and not LegacyWeaponConverter.IsLegacyWeaponId(defId) then
 		notify(player, false, `Unknown defId: {defId}`)
 		return
 	end
 	local n = math.clamp(math.floor(if typeof(count) == "number" then count else 1), 1, 20)
 	for _ = 1, n do
-		InventoryService.AddItem(player.UserId, defId)
+		if LegacyWeaponConverter.IsLegacyWeaponId(defId) then
+			InventoryService.ConvertLegacyWeapon(player.UserId, defId)
+		else
+			InventoryService.AddItem(player.UserId, defId)
+		end
 	end
 	pushInventory(player)
 	local def = ItemDefs.Get(defId)
-	notify(player, true, `Granted {n}× {def.name}`)
+	notify(player, true, `Granted {n}× {if def then def.name else defId}`)
 end)
 
 SetStats.OnServerEvent:Connect(function(player: Player, patch: any)

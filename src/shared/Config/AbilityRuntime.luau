@@ -5,6 +5,7 @@
 ]]
 
 local ElementData = require(script.Parent.ElementData)
+local WeaponActiveDefs = require(script.Parent.WeaponActiveDefs)
 
 local AbilityRuntime = {}
 
@@ -28,77 +29,76 @@ export type AbilitySpec = {
 	selfBuffParams: { [string]: number }?,
 }
 
--- Handcrafted / signature overrides
+-- Catalog weapon actives (see WeaponActiveDefs). Signature/boss actives register at runtime.
 local SPECS: { [string]: AbilitySpec } = {
-	cinder_lunge = {
-		id = "cinder_lunge",
-		damagePct = 120,
-		range = 10,
-		shape = "Dash",
-		statusId = "Ignite",
-		statusDuration = 3,
-		cooldownSec = 8,
-		anim = "Melee",
-		vfx = "Dash",
-	},
-	arc_thrust = {
-		id = "arc_thrust",
+	strike_weaponactive = {
+		id = "strike_weaponactive",
 		damagePct = 130,
 		range = 8,
 		shape = "Single",
-		statusId = "Shock",
-		statusDuration = 0.5,
 		cooldownSec = 9,
 		anim = "Melee",
 		vfx = "Slash",
 	},
-	rend_wave = {
-		id = "rend_wave",
-		damagePct = 140,
-		range = 8,
-		coneDeg = 120,
-		shape = "Cone",
-		statusId = "Bleed",
-		statusDuration = 8,
-		statusDps = 4,
-		cooldownSec = 11,
+	strike_r_weaponactive = {
+		id = "strike_r_weaponactive",
+		damagePct = 145,
+		range = 9,
+		shape = "Single",
+		cooldownSec = 8,
 		anim = "Melee",
-		vfx = "Cone",
+		vfx = "Slash",
 	},
-	tectonic_cleave = {
-		id = "tectonic_cleave",
-		damagePct = 160,
-		range = 6,
-		coneDeg = 90,
-		shape = "Cone",
-		statusId = "Slow",
-		statusDuration = 2,
-		cooldownSec = 10,
-		anim = "Melee",
-		vfx = "Cone",
-	},
-	fault_crash = {
-		id = "fault_crash",
-		damagePct = 200,
-		range = 6,
-		shape = "Dash",
-		cooldownSec = 14,
-		anim = "Melee",
-		vfx = "Dash",
-	},
-	thunderbolt = {
-		id = "thunderbolt",
-		damagePct = 150,
+	bolt_weaponactive = {
+		id = "bolt_weaponactive",
+		damagePct = 130,
 		range = 28,
 		shape = "Single",
-		statusId = "Shock",
-		statusDuration = 0.5,
-		cooldownSec = 10,
+		cooldownSec = 9,
 		anim = "Cast",
 		vfx = "Bolt",
 	},
-	stone_armor = {
-		id = "stone_armor",
+	bolt_r_weaponactive = {
+		id = "bolt_r_weaponactive",
+		damagePct = 145,
+		range = 30,
+		shape = "Single",
+		cooldownSec = 8,
+		anim = "Cast",
+		vfx = "Bolt",
+	},
+	cone_weaponactive = {
+		id = "cone_weaponactive",
+		damagePct = 115,
+		range = 16,
+		coneDeg = 45,
+		shape = "Cone",
+		cooldownSec = 9,
+		anim = "Cast",
+		vfx = "Cone",
+	},
+	cone_r_weaponactive = {
+		id = "cone_r_weaponactive",
+		damagePct = 125,
+		range = 18,
+		coneDeg = 50,
+		shape = "Cone",
+		cooldownSec = 9,
+		anim = "Melee",
+		vfx = "Cone",
+	},
+	slam_r_weaponactive = {
+		id = "slam_r_weaponactive",
+		damagePct = 155,
+		range = 9,
+		radius = 9,
+		shape = "Sphere",
+		cooldownSec = 10,
+		anim = "Melee",
+		vfx = "Burst",
+	},
+	burst_weaponactive = {
+		id = "burst_weaponactive",
 		damagePct = 0,
 		range = 0,
 		shape = "Self",
@@ -106,114 +106,17 @@ local SPECS: { [string]: AbilitySpec } = {
 		anim = "Buff",
 		vfx = "Aura",
 		selfBuff = "Fortify",
-		selfBuffDuration = 4,
-		selfBuffParams = { damageTakenMult = 0.85 },
+		selfBuffDuration = 3,
+		selfBuffParams = { damageTakenMult = 0.9 },
 	},
-	chain_jolt = {
-		id = "chain_jolt",
+	dash_weaponactive = {
+		id = "dash_weaponactive",
 		damagePct = 120,
-		range = 28,
-		shape = "Single",
-		statusId = "Shock",
-		statusDuration = 0.5,
-		cooldownSec = 12,
-		anim = "Cast",
-		vfx = "Bolt",
-	},
-	blazing_arc = {
-		id = "blazing_arc",
-		damagePct = 140,
-		range = 7,
-		coneDeg = 100,
-		shape = "Cone",
-		statusId = "Ignite",
-		statusDuration = 3,
-		cooldownSec = 9,
-		anim = "Melee",
-		vfx = "Cone",
-	},
-	riptide_chop = {
-		id = "riptide_chop",
-		damagePct = 155,
-		range = 8,
+		range = 10,
 		shape = "Dash",
-		statusId = "Wet",
-		statusDuration = 5,
-		cooldownSec = 11,
+		cooldownSec = 8,
 		anim = "Melee",
 		vfx = "Dash",
-	},
-	fan_of_knives = {
-		id = "fan_of_knives",
-		damagePct = 75, -- per knife; proto: 3 hits simplified as ×3 once
-		range = 10,
-		coneDeg = 80,
-		shape = "Cone",
-		statusId = "Poisoned",
-		statusDuration = 5,
-		statusDps = 3,
-		cooldownSec = 10,
-		anim = "Melee",
-		vfx = "Cone",
-	},
-	petrify_bolt = {
-		id = "petrify_bolt",
-		damagePct = 125,
-		range = 22,
-		shape = "Single",
-		statusId = "Slow",
-		statusDuration = 3,
-		cooldownSec = 11,
-		anim = "Cast",
-		vfx = "Bolt",
-	},
-	ballista_shot = {
-		id = "ballista_shot",
-		damagePct = 180,
-		range = 26,
-		shape = "Single",
-		statusId = "Bleed",
-		statusDuration = 8,
-		statusDps = 4,
-		cooldownSec = 13,
-		anim = "Bow",
-		vfx = "Bolt",
-	},
-	gale_volley = {
-		id = "gale_volley",
-		damagePct = 70,
-		range = 28,
-		coneDeg = 40,
-		shape = "Cone",
-		statusId = "Windy",
-		statusDuration = 3,
-		cooldownSec = 10,
-		anim = "Bow",
-		vfx = "Cone",
-	},
-	grand_slam = {
-		id = "grand_slam",
-		damagePct = 130,
-		range = 10,
-		radius = 10,
-		shape = "Sphere",
-		statusId = "Bleed",
-		statusDuration = 8,
-		statusDps = 4,
-		cooldownSec = 10,
-		anim = "Melee",
-		vfx = "Burst",
-	},
-	grand_strike = {
-		id = "grand_strike",
-		damagePct = 150,
-		range = 8,
-		shape = "Single",
-		statusId = "Knockback",
-		statusDuration = 0.35,
-		cooldownSec = 15,
-		anim = "Melee",
-		vfx = "Slash",
 	},
 }
 
@@ -235,7 +138,28 @@ local function defaultFromElement(abilityId: string, element: string?, cooldownS
 	}
 end
 
+local function statusFromElement(el: string): (string?, number?, number?)
+	local sig = ElementData.Signature[el]
+	local statusId = sig and sig.id or nil
+	local statusDuration = if el == "Lightning" then 0.5 elseif el == "Steel" then 8 elseif el == "Poison" then 5 elseif el == "Water" then 5 elseif el == "Wind" then 3 elseif el == "Rock" then 2 elseif el == "Fire" then 3 else nil
+	local statusDps = if el == "Steel" then 4 elseif el == "Poison" then 3 elseif el == "Fire" then 7 else nil
+	return statusId, statusDuration, statusDps
+end
+
 function AbilityRuntime.Get(abilityId: string, fallbackElement: string?, fallbackCd: number?): AbilitySpec
+	if WeaponActiveDefs.UsesGemElement(abilityId) then
+		local base = SPECS[abilityId]
+		if base then
+			local el = fallbackElement or "Neutral"
+			local out = table.clone(base)
+			out.statusId, out.statusDuration, out.statusDps = statusFromElement(el)
+			if fallbackCd then
+				out.cooldownSec = fallbackCd
+			end
+			return out
+		end
+	end
+
 	local spec = SPECS[abilityId]
 	if spec then
 		return spec

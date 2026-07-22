@@ -196,22 +196,35 @@ Tek **Damage** statı. **Matchup** (±15%): silah element → chest element; yal
 
 ### Yetenek slotları (kilit)
 
-Her eşya **en fazla** aşağıdaki tavanlara uyar. Boss / exclusive drop’larda A+P birlikte olabilir; **aktif sayısı tavanı asla aşılmaz**.
+**1H grubu:** `1H_Sword`, `1H_AxeMace`, `1H_WandScepter` handle'ları → Sword/Dagger/Axe/Mace/Wand/Scepter blade'leri.  
+**2H grubu:** `2H_Sword`, `2H_AxeMace`, `2H_Staff`, `2H_Bow`, `2H_Crossbow` → Greatblade/Greataxe/Staff/Bow/Crossbow vb.
 
-| Kaynak | Max Active | Max Passive | Toplam yetenek slotu | Not |
-|--------|------------|------------|----------------------|-----|
-| **1H silah** (main veya off) | **1** | **1** | **1 veya 2** | **2 Active asla yok.** Normal loot sıkça yalnız 1A *veya* yalnız 1P; boss drop’ta **1A+1P** olabilir |
-| **2H / Staff / Bow / Crossbow** | **2** | **2** | **2** (normal) | Dağılım: 2A · 2P · 1A+1P. **3 Active asla yok.** *Nadir / boss:* **2A+1P** (3 slot) olabilir — elde edilmesi zor |
-| **Off — Quiver / Knot** | 0 | 1 veya stat | 1 | Tagsiz |
-| **Off — Shield / Focus** | 1 | 1 | **1** (A *veya* P, ikisi birden değil) |
-| **Head / Chest / Hand / Feets** | 0–1 | 0–1 | 0–2 | |
+| Grup | Max Active | Max Passive |
+|------|------------|-------------|
+| **1H** | **1** | **1** |
+| **2H / Staff / Bow / Crossbow** | **2** | **2** |
 
-**Hotbar (kilit):** Loadout’taki **Active** sayısı **0–6** (Q E R 1 2 3).  
+### Rarity — blade yetenek dağılımı (v1 kilit, lootbox)
+
+| Rarity | 1H blade | 2H / Staff / Bow / Crossbow blade |
+|--------|----------|-----------------------------------|
+| **Common** (lootbox) | **Yalnız 1A** *veya* **yalnız 1P** (toplam 1) | **2A** *veya* **2P** *veya* **1A+1P** (toplam 2) |
+| **Rare** | **1A + 1P** (fazladan pasif = ikinci slot) | Active tavanı aynı (max 2A); **fazladan pasif** → **≥3 yetenek** (ör. **2A+1P**, **1A+2P**) |
+
+**Hotbar (kilit):** Loadout'taki **Active** sayısı **0–6** (Q E R 1 2 3).  
 - **Max 6** Active — tavan.  
 - **Min 0** Active — zorunlu yetenek yok; tamamen pasif + light attack build geçerli.  
-Item / loot tablosu 6 Active’i aşacak kombinasyon üretmez.
+Item / loot tablosu 6 Active'i aşacak kombinasyon üretmez.
 
-**Nadir silah (boss / exclusive):** Normal loot tavanının üstünde A+P kombinasyonu olabilir (ör. 1H **1 Active + 1 Passive**, 2H **2 Active + 1 Passive**). Hâlâ: 1H’de max **1** Active · 2H’de max **2** Active · loadout toplam Active ≤ **6**.
+**Diğer slotlar:**
+
+| Kaynak | Max Active | Max Passive | Not |
+|--------|------------|-------------|-----|
+| **Off — Quiver / Knot** | 0 | 1 veya stat | Tagsiz |
+| **Off — Shield / Focus** | 1 | 1 | **1** (A *veya* P) |
+| **Head / Chest / Hand / Feets** | 0–1 | 0–1 | 0–2 |
+
+Modüler silahta yetenekler **blade**'de (`abilities[]`). Kod doğrulama → `BladeDefs.ValidateBlade`.
 
 **Kaldırılan kural:** ~~Off-hand aktif yetenek kullanılamaz~~ — artık **kullanılabilir** (loadout derinliği).
 
@@ -220,7 +233,7 @@ Item / loot tablosu 6 Active’i aşacak kombinasyon üretmez.
 - **Tank:** yüksek Defence, düşük Resist — *manuel item tablosu*
 - **Büyücü:** düşük Defence, yüksek Resist — *manuel*
 - **Stat requirement:** `Requires STR 40` vb.
-- *Rarity / tier — TBD*
+- **Rarity (v1):** yalnız **Common** (lootbox) ve **Rare** — blade yetenek dağılımı yukarıdaki tabloda kilitli.
 
 ### Element tag (kilit)
 
@@ -242,6 +255,24 @@ Element **tag** iki katmanda kullanılır:
 ---
 
 ## 6. Weapons
+
+### Modüler silah parçaları (kilit v1)
+
+Ana el (**main**) slotu tek bir **WeaponFrame** tutar; üç parça + opsiyonel gem ile birleşir.
+
+| Parça | Rol | Element |
+|-------|-----|---------|
+| **Handle** | 8 aile tipi; `kind`, scaling, base damage, AS tier; gem socket | Yok |
+| **Blade / Limbs / Head** | Aktif/pasif yetenek formu; `subFamily` (ör. Dagger) | Yok |
+| **Pommel / String** | Global stat trade-off (Heavy / Balanced / Lightweight); bow & crossbow = String | Yok |
+| **Gem** (socket) | Element tag | Var |
+
+Tam spec → **`ROBLOX_MODULAR_GEAR_NOTES.md`** (pommel/string + blade yetenek bütçesi).
+
+- Ability formu **blade**'den; element **gem**'den okunur.
+- Gem sökülürken **yok olur**; boş socket = **Neutral**.
+- Eski monolitik silahlar otomatik **WeaponFrame**'e dönüştürülür.
+- Zırh/chest/shield socket **yok** (v1).
 
 ### Pure scaling (kilit)
 

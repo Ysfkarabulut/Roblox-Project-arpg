@@ -1,13 +1,15 @@
 --[[
 	LoadoutService — slot → item uuid.
-	Kurallar: GDD §5 (2H/Bow/Staff → Knot/Quiver off uyumu basit kontrol).
+	Main slot: WeaponFrame only (modular weapons).
 ]]
 
 local Players = game:GetService("Players")
 
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutSlots = require(game.ReplicatedStorage.Shared.Config.LoadoutSlots)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 local InventoryService = require(script.Parent.InventoryService)
+local WeaponAssemblyService = require(script.Parent.WeaponAssemblyService)
 
 export type LoadoutMap = {
 	main: string?,
@@ -77,8 +79,20 @@ local function kindOfUuid(userId: number, uuid: string): string?
 	if not inst then
 		return nil
 	end
+	if inst.defId == "weapon_frame" then
+		local resolved = WeaponAssemblyService.ToResolved(userId, uuid)
+		return resolved.kind
+	end
 	local def = ItemDefs.Get(inst.defId)
 	return def and def.kind or nil
+end
+
+function LoadoutService.GetResolvedMain(userId: number)
+	local lo = ensure(userId)
+	if not lo.main then
+		return nil
+	end
+	return WeaponAssemblyService.ToResolved(userId, lo.main)
 end
 
 -- 2H / Bow / Crossbow / Staff main → off Knot veya Quiver (türe göre)
@@ -117,8 +131,8 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 	if not inst then
 		return false, "NotOwned"
 	end
-	if not ItemDefs.CanEquipInSlot(inst.defId, slotId) then
-		return false, "WrongSlot"
+	if InventoryService.IsInstalled(userId, uuid) and inst.defId ~= "weapon_frame" then
+		return false, "PartInstalled"
 	end
 
 	local def = ItemDefs.Get(inst.defId)
@@ -126,9 +140,16 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 		return false, "UnknownDef"
 	end
 
+	if slotId == "main" then
+		if def.kind ~= "WeaponFrame" then
+			return false, "MainRequiresFrame"
+		end
+	elseif not ItemDefs.CanEquipInSlot(inst.defId, slotId) then
+		return false, "WrongSlot"
+	end
+
 	local lo = ensure(userId)
 
-	-- Aynı uuid başka slotta ise önce oradan çıkar
 	for _, s in LoadoutSlots.Order do
 		if (lo :: any)[s] == uuid then
 			(lo :: any)[s] = nil
@@ -138,8 +159,9 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 	if slotId == "main" then
 		local offUuid = lo.off
 		local offKind = offUuid and kindOfUuid(userId, offUuid) or nil
-		if not offCompatible(def.kind, offKind) then
-			lo.off = nil -- uyumsuz off otomatik düşer
+		local mainKind = kindOfUuid(userId, uuid)
+		if not offCompatible(mainKind, offKind) then
+			lo.off = nil
 		end
 	elseif slotId == "off" then
 		local mainUuid = lo.main

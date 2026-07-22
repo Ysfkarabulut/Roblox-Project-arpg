@@ -5,9 +5,7 @@
 ]]
 
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
-local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
-local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local StaminaService = require(script.Parent.StaminaService)
 local StatusService = require(script.Parent.StatusService)
 local GuardService = require(script.Parent.GuardService)
@@ -36,27 +34,17 @@ local function ensure(userId: number): State
 end
 
 function ParryService.CanParry(userId: number): boolean
-	-- Shield = guard only, no parry
 	if GuardService.GetShieldDef(userId) then
 		return false
 	end
-	local loadout = LoadoutService.Get(userId)
-	if not loadout.main then
-		return false
-	end
-	local inst = InventoryService.Find(userId, loadout.main)
-	local def = inst and ItemDefs.Get(inst.defId)
-	return def ~= nil
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	return resolved ~= nil and resolved.complete == true
 end
 
 function ParryService.FailCostFraction(userId: number): number
-	local loadout = LoadoutService.Get(userId)
-	if loadout.main then
-		local inst = InventoryService.Find(userId, loadout.main)
-		local def = inst and ItemDefs.Get(inst.defId)
-		if def and TWO_H_KINDS[def.kind] then
-			return CombatConfig.ParryFailCost2H
-		end
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	if resolved and resolved.kind and TWO_H_KINDS[resolved.kind] then
+		return CombatConfig.ParryFailCost2H
 	end
 	return CombatConfig.ParryFailCost1H
 end

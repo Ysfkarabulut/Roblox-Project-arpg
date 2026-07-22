@@ -9,6 +9,8 @@ local WeaponFamilyConfig = require(game.ReplicatedStorage.Shared.Config.WeaponFa
 local WeaponMeshConfig = require(game.ReplicatedStorage.Shared.Config.WeaponMeshConfig)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 
 local WeaponVisualService = {}
 
@@ -550,6 +552,56 @@ local function buildWeapon(familyKey: string, element: string?, folder: Folder, 
 	end
 end
 
+--- 3-part modular placeholder: handle + blade + pommel (tint by archetype) + gem orb
+local function buildModularComposite(resolved: any, folder: Folder, hand: BasePart)
+	local bladeCol = metalBase(resolved.element)
+	local handleCol = Color3.fromRGB(139, 119, 90)
+	local pommelDef = resolved.pommelDefId and ItemDefs.Get(resolved.pommelDefId)
+	local pommelCol = Color3.fromRGB(130, 130, 140)
+	if pommelDef and pommelDef.archetype == "Heavy" then
+		pommelCol = Color3.fromRGB(95, 95, 105)
+	elseif pommelDef and pommelDef.archetype == "Lightweight" then
+		pommelCol = Color3.fromRGB(175, 185, 200)
+	end
+
+	local bladeLen = 2.0
+	local handleLen = 0.85
+	if resolved.kind == "Weapon2H" or resolved.kind == "Staff" then
+		bladeLen = 3.2
+		handleLen = 1.1
+	elseif resolved.kind == "Bow" then
+		bladeLen = 1.4
+		handleLen = 1.0
+	elseif resolved.kind == "Crossbow" then
+		bladeLen = 1.0
+		handleLen = 0.9
+	elseif resolved.subFamily == "Dagger" then
+		bladeLen = 1.15
+		handleLen = 0.7
+	elseif resolved.kind == "Wand" or resolved.kind == "Scepter" then
+		bladeLen = 0.55
+		handleLen = 1.0
+	end
+
+	local grip = makePart("ModHandle", Vector3.new(0.24, handleLen, 0.24), handleCol, Enum.Material.Wood)
+	weldWeapon(grip, hand, folder, CFrame.new(0, -0.12, 0))
+
+	local blade = makePart("ModBlade", Vector3.new(0.2, bladeLen, 0.42), bladeCol, Enum.Material.Metal)
+	weldWeapon(blade, hand, folder, CFrame.new(0, -(handleLen * 0.45 + bladeLen * 0.5), 0))
+
+	local pommelSize = if pommelDef and pommelDef.archetype == "Heavy"
+		then 0.42
+		elseif pommelDef and pommelDef.archetype == "Lightweight" then 0.28
+		else 0.34
+	local pommel = makePart("ModPommel", Vector3.new(pommelSize, pommelSize, pommelSize), pommelCol, Enum.Material.Metal)
+	if pommelDef and pommelDef.archetype == "Heavy" then
+		pommel.Shape = Enum.PartType.Ball
+	end
+	weldWeapon(pommel, hand, folder, CFrame.new(0, handleLen * 0.42, 0))
+
+	addAccentOrb(folder, hand, CFrame.new(0, -0.32, 0.18), resolved.element, 0.28)
+end
+
 local function buildShield(defId: string, element: string?, folder: Folder, hand: BasePart)
 	if tryAttachMeshShield(defId, folder, hand) then
 		return
@@ -663,12 +715,12 @@ function WeaponVisualService.Refresh(player: Player)
 	local loadout = LoadoutService.Get(userId)
 
 	if loadout.main then
-		local inst = InventoryService.Find(userId, loadout.main)
-		local def = inst and ItemDefs.Get(inst.defId)
-		if def then
+		local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
+		if resolved and resolved.complete then
+			local def = WeaponResolver.AsItemDef(resolved)
 			local fam = WeaponFamilyConfig.Resolve(def)
 			local hand = if fam.hand == "Left" and left then left else right
-			buildWeapon(fam.animPrefix, def.element, weaponFolder, hand, inst.defId)
+			buildModularComposite(resolved, weaponFolder, hand)
 		end
 	end
 

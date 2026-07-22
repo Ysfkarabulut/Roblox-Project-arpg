@@ -65,6 +65,7 @@ local CombatConfig = {
 	DummySpawn = Vector3.new(8, 3, -12),
 	MeleeRange = 10,
 	DefaultWeaponBase = 40,
+	OffHandDamageMult = 0.65, -- dual wield off-hand hit (GDD §7 / §11b)
 
 	-- Classic over-the-shoulder offset while F4 shift lock is on.
 	-- Soft target aimlock deferred — do not drive camera look-at here.

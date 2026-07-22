@@ -25,6 +25,11 @@ local BindAbility = remotes:WaitForChild("BindAbility") :: RemoteEvent
 local UnbindHotbar = remotes:WaitForChild("UnbindHotbar") :: RemoteEvent
 local DiscardItem = remotes:WaitForChild("DiscardItem") :: RemoteEvent
 local InventoryUpdated = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
+local InstallWeaponPart = remotes:WaitForChild("InstallWeaponPart") :: RemoteEvent
+local RemoveWeaponPart = remotes:WaitForChild("RemoveWeaponPart") :: RemoteEvent
+local SocketGem = remotes:WaitForChild("SocketGem") :: RemoteEvent
+local UnsocketGem = remotes:WaitForChild("UnsocketGem") :: RemoteEvent
+local CreateWeaponFrame = remotes:WaitForChild("CreateWeaponFrame") :: RemoteEvent
 
 type ActiveInfo = { abilityId: string, name: string, desc: string, sourceUuid: string, defId: string }
 
@@ -34,7 +39,21 @@ local snapshot = {
 	hotbar = {} :: { [number]: string? },
 	actives = {} :: { ActiveInfo },
 	stats = { level = 1, STR = 10, DEX = 10, VIT = 10, INT = 10 },
-	derived = { hp = 0, stamina = 0, defenceFromVit = 0, resistFromVit = 0 },
+	derived = { hp = 0, stamina = 0, defenceFromVit = 0, resistFromVit = 0, totalDefence = 0, totalResist = 0 },
+	resolvedMain = nil :: any,
+}
+
+local invFilter = "All"
+local pendingInstallSlot: string? = nil
+local pendingConfirmAction: (() -> ())? = nil
+
+local FILTER_OPTIONS = {
+	{ id = "All", label = "All" },
+	{ id = "Frames", label = "Frame" },
+	{ id = "Handles", label = "Handle" },
+	{ id = "Blades", label = "Blade" },
+	{ id = "Pommels", label = "Pommel" },
+	{ id = "Gems", label = "Gem" },
 }
 
 local selectedUuid: string? = nil
@@ -57,14 +76,6 @@ local PRIMARY_COLORS = {
 	INT = Color3.fromRGB(200, 130, 255),
 }
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "GearUI"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 10
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = playerGui
-
 local function corner(parent: Instance, r: number?)
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, r or 8)
@@ -77,6 +88,105 @@ local function stroke(parent: Instance, color: Color3?, t: number?)
 	s.Thickness = t or 1
 	s.Parent = parent
 end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "GearUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 10
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+-- Confirm modal (gem unsocket etc.)
+local confirmOverlay = Instance.new("Frame")
+confirmOverlay.Name = "ConfirmOverlay"
+confirmOverlay.Size = UDim2.fromScale(1, 1)
+confirmOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+confirmOverlay.BackgroundTransparency = 0.45
+confirmOverlay.Visible = false
+confirmOverlay.ZIndex = 30
+confirmOverlay.Parent = gui
+
+local confirmBox = Instance.new("Frame")
+confirmBox.Size = UDim2.fromOffset(320, 148)
+confirmBox.Position = UDim2.new(0.5, -160, 0.5, -74)
+confirmBox.BackgroundColor3 = COL_PANEL
+confirmBox.BorderSizePixel = 0
+confirmBox.Parent = confirmOverlay
+corner(confirmBox, 10)
+stroke(confirmBox, Color3.fromRGB(90, 94, 104), 1.5)
+
+local confirmTitle = Instance.new("TextLabel")
+confirmTitle.Size = UDim2.new(1, -20, 0, 28)
+confirmTitle.Position = UDim2.fromOffset(10, 10)
+confirmTitle.BackgroundTransparency = 1
+confirmTitle.Font = Enum.Font.GothamBold
+confirmTitle.TextSize = 15
+confirmTitle.TextColor3 = COL_TEXT
+confirmTitle.TextXAlignment = Enum.TextXAlignment.Left
+confirmTitle.Text = "Confirm"
+confirmTitle.Parent = confirmBox
+
+local confirmBody = Instance.new("TextLabel")
+confirmBody.Size = UDim2.new(1, -20, 0, 52)
+confirmBody.Position = UDim2.fromOffset(10, 38)
+confirmBody.BackgroundTransparency = 1
+confirmBody.Font = Enum.Font.Gotham
+confirmBody.TextSize = 12
+confirmBody.TextColor3 = COL_MUTED
+confirmBody.TextXAlignment = Enum.TextXAlignment.Left
+confirmBody.TextYAlignment = Enum.TextYAlignment.Top
+confirmBody.TextWrapped = true
+confirmBody.Text = ""
+confirmBody.Parent = confirmBox
+
+local confirmYes = Instance.new("TextButton")
+confirmYes.Size = UDim2.fromOffset(120, 32)
+confirmYes.Position = UDim2.new(1, -252, 1, -42)
+confirmYes.BackgroundColor3 = Color3.fromRGB(150, 55, 55)
+confirmYes.BorderSizePixel = 0
+confirmYes.Font = Enum.Font.GothamBold
+confirmYes.TextSize = 13
+confirmYes.TextColor3 = COL_TEXT
+confirmYes.Text = "Confirm"
+confirmYes.Parent = confirmBox
+corner(confirmYes, 6)
+
+local confirmNo = Instance.new("TextButton")
+confirmNo.Size = UDim2.fromOffset(120, 32)
+confirmNo.Position = UDim2.new(1, -126, 1, -42)
+confirmNo.BackgroundColor3 = COL_SLOT
+confirmNo.BorderSizePixel = 0
+confirmNo.Font = Enum.Font.GothamBold
+confirmNo.TextSize = 13
+confirmNo.TextColor3 = COL_TEXT
+confirmNo.Text = "Cancel"
+confirmNo.Parent = confirmBox
+corner(confirmNo, 6)
+
+local function hideConfirm()
+	confirmOverlay.Visible = false
+	pendingConfirmAction = nil
+end
+
+local function showConfirm(title: string, body: string, onYes: () -> ())
+	confirmTitle.Text = title
+	confirmBody.Text = body
+	pendingConfirmAction = onYes
+	confirmOverlay.Visible = true
+end
+
+confirmYes.MouseButton1Click:Connect(function()
+	local action = pendingConfirmAction
+	hideConfirm()
+	if action then
+		action()
+	end
+end)
+
+confirmNo.MouseButton1Click:Connect(function()
+	hideConfirm()
+end)
 
 local function isTyping(): boolean
 	return UserInputService:GetFocusedTextBox() ~= nil
@@ -103,6 +213,9 @@ local function suggestSlot(defId: string): string?
 	if not def then
 		return nil
 	end
+	if ItemDefs.IsPartKind(def.kind) then
+		return nil
+	end
 	local hints = (def :: any).slotHints
 	if typeof(hints) == "table" and hints[1] then
 		return hints[1]
@@ -118,6 +231,8 @@ local function suggestSlot(defId: string): string?
 		return "feets"
 	elseif kind == "Shield" or kind == "Focus" or kind == "Knot" or kind == "Quiver" then
 		return "off"
+	elseif kind == "WeaponFrame" then
+		return "main"
 	end
 	return "main"
 end
@@ -129,10 +244,10 @@ local function secondaryFromStats()
 	local critChance = math.min(CombatConfig.BaseCrit + dex * CombatConfig.KDexCrit, CombatConfig.CritChanceCap)
 	local critDmg = math.min(CombatConfig.BaseCritDmg + str * CombatConfig.KStrCritDmg, CombatConfig.CritDmgCap)
 	local asMult = math.min(1 + dex * CombatConfig.KDexAs, CombatConfig.AsCap)
-	local defence = d.defenceFromVit or (vit * CombatConfig.KVitDef)
-	local resist = d.resistFromVit or (vit * CombatConfig.KVitRes)
+	local defence = d.totalDefence or d.defenceFromVit or (vit * CombatConfig.KVitDef)
+	local resist = d.totalResist or d.resistFromVit or (vit * CombatConfig.KVitRes)
 	local dr = math.min(defence * CombatConfig.KDr, CombatConfig.DrCapPvp)
-	local statusPot = int_ * 0.5 -- display proxy until full gear sum
+	local statusPot = int_ * 0.5 + (d.passiveStatusPotency or 0)
 	local buffPot = int_ * 0.25
 	return {
 		{ "HP", string.format("%d", math.floor(d.hp or 0)), Color3.fromRGB(100, 220, 130) },
@@ -513,9 +628,23 @@ abilityLayout.Parent = abilityStrip
 local invPanel = makePanel("Inventory", UDim2.new(0.38, -4, 1, 0), UDim2.new(0.62, 4, 0, 0))
 makeHeader(invPanel, "INVENTORY")
 
+local filterBar = Instance.new("Frame")
+filterBar.Name = "FilterBar"
+filterBar.Size = UDim2.new(1, -20, 0, 28)
+filterBar.Position = UDim2.fromOffset(10, 40)
+filterBar.BackgroundTransparency = 1
+filterBar.Parent = invPanel
+
+local filterLayout = Instance.new("UIListLayout")
+filterLayout.FillDirection = Enum.FillDirection.Horizontal
+filterLayout.Padding = UDim.new(0, 4)
+filterLayout.Parent = filterBar
+
+local filterButtons: { [string]: TextButton } = {}
+
 local invGrid = Instance.new("ScrollingFrame")
-invGrid.Size = UDim2.new(1, -20, 0.48, -8)
-invGrid.Position = UDim2.fromOffset(10, 44)
+invGrid.Size = UDim2.new(1, -20, 0.46, -12)
+invGrid.Position = UDim2.fromOffset(10, 72)
 invGrid.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
 invGrid.BorderSizePixel = 0
 invGrid.ScrollBarThickness = 3
@@ -605,6 +734,153 @@ discardBtn.AutoButtonColor = true
 discardBtn.Parent = detail
 corner(discardBtn, 6)
 
+local assemblyPanel = Instance.new("Frame")
+assemblyPanel.Name = "AssemblyPanel"
+assemblyPanel.Size = UDim2.new(1, -20, 0, 108)
+assemblyPanel.Position = UDim2.new(0, 10, 1, -188)
+assemblyPanel.BackgroundColor3 = Color3.fromRGB(32, 34, 40)
+assemblyPanel.BorderSizePixel = 0
+assemblyPanel.Visible = false
+assemblyPanel.Parent = detail
+corner(assemblyPanel, 6)
+stroke(assemblyPanel)
+
+local assemblyTitle = Instance.new("TextLabel")
+assemblyTitle.Size = UDim2.new(1, -8, 0, 18)
+assemblyTitle.Position = UDim2.fromOffset(6, 4)
+assemblyTitle.BackgroundTransparency = 1
+assemblyTitle.Font = Enum.Font.GothamBold
+assemblyTitle.TextSize = 11
+assemblyTitle.TextColor3 = COL_MUTED
+assemblyTitle.TextXAlignment = Enum.TextXAlignment.Left
+assemblyTitle.Text = "WEAPON ASSEMBLY"
+assemblyTitle.Parent = assemblyPanel
+
+local partSlots = { "handle", "blade", "pommel" }
+local partButtons: { [string]: TextButton } = {}
+for i, slotName in partSlots do
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromOffset(88, 36)
+	btn.Position = UDim2.fromOffset(6 + (i - 1) * 94, 24)
+	btn.BackgroundColor3 = COL_SLOT
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.Gotham
+	btn.TextSize = 9
+	btn.TextColor3 = COL_TEXT
+	btn.Text = string.upper(slotName) .. "\n(empty)"
+	btn.Parent = assemblyPanel
+	corner(btn, 4)
+	partButtons[slotName] = btn
+	btn.MouseButton1Click:Connect(function()
+		if not selectedUuid then
+			return
+		end
+		pendingInstallSlot = slotName
+	end)
+	btn.MouseButton2Click:Connect(function()
+		if not selectedUuid then
+			return
+		end
+		for _, item in snapshot.items do
+			if item.uuid == selectedUuid and item.defId == "weapon_frame" and item.parts then
+				local partUuid = (item.parts :: any)[slotName]
+				if partUuid then
+					RemoveWeaponPart:FireServer(selectedUuid, slotName)
+					pendingInstallSlot = nil
+				end
+				break
+			end
+		end
+	end)
+
+	local removeBtn = Instance.new("TextButton")
+	removeBtn.Name = "RemovePart"
+	removeBtn.Size = UDim2.fromOffset(16, 16)
+	removeBtn.Position = UDim2.new(1, -18, 0, 2)
+	removeBtn.BackgroundColor3 = Color3.fromRGB(130, 60, 60)
+	removeBtn.BorderSizePixel = 0
+	removeBtn.Font = Enum.Font.GothamBold
+	removeBtn.TextSize = 12
+	removeBtn.TextColor3 = COL_TEXT
+	removeBtn.Text = "-"
+	removeBtn.ZIndex = 2
+	removeBtn.Parent = btn
+	corner(removeBtn, 3)
+	removeBtn.MouseButton1Click:Connect(function()
+		if not selectedUuid then
+			return
+		end
+		for _, item in snapshot.items do
+			if item.uuid == selectedUuid and item.defId == "weapon_frame" and item.parts then
+				local partUuid = (item.parts :: any)[slotName]
+				if partUuid then
+					RemoveWeaponPart:FireServer(selectedUuid, slotName)
+					pendingInstallSlot = nil
+				end
+				break
+			end
+		end
+	end)
+end
+
+local gemBtn = Instance.new("TextButton")
+gemBtn.Size = UDim2.fromOffset(88, 36)
+gemBtn.Position = UDim2.fromOffset(6, 66)
+gemBtn.BackgroundColor3 = COL_SLOT
+gemBtn.BorderSizePixel = 0
+gemBtn.Font = Enum.Font.Gotham
+gemBtn.TextSize = 9
+gemBtn.TextColor3 = COL_TEXT
+gemBtn.Text = "GEM\n(empty)"
+gemBtn.Parent = assemblyPanel
+corner(gemBtn, 4)
+
+local unsocketBtn = Instance.new("TextButton")
+unsocketBtn.Size = UDim2.fromOffset(88, 28)
+unsocketBtn.Position = UDim2.fromOffset(100, 70)
+unsocketBtn.BackgroundColor3 = Color3.fromRGB(120, 70, 70)
+unsocketBtn.BorderSizePixel = 0
+unsocketBtn.Font = Enum.Font.GothamBold
+unsocketBtn.TextSize = 9
+unsocketBtn.TextColor3 = COL_TEXT
+unsocketBtn.Text = "Unsocket Gem"
+unsocketBtn.Parent = assemblyPanel
+corner(unsocketBtn, 4)
+
+local createFrameBtn = Instance.new("TextButton")
+createFrameBtn.Size = UDim2.fromOffset(100, 28)
+createFrameBtn.Position = UDim2.fromOffset(196, 70)
+createFrameBtn.BackgroundColor3 = Color3.fromRGB(60, 100, 140)
+createFrameBtn.BorderSizePixel = 0
+createFrameBtn.Font = Enum.Font.GothamBold
+createFrameBtn.TextSize = 9
+createFrameBtn.TextColor3 = COL_TEXT
+createFrameBtn.Text = "+ New Frame"
+createFrameBtn.Parent = assemblyPanel
+corner(createFrameBtn, 4)
+
+unsocketBtn.MouseButton1Click:Connect(function()
+	if not selectedUuid then
+		return
+	end
+	showConfirm(
+		"Destroy Gem?",
+		"Unsocketing permanently destroys the gem. The weapon will become Neutral until a new gem is socketed.",
+		function()
+			UnsocketGem:FireServer(selectedUuid)
+		end
+	)
+end)
+
+createFrameBtn.MouseButton1Click:Connect(function()
+	CreateWeaponFrame:FireServer()
+end)
+
+equipBtn.Size = UDim2.new(0.48, -6, 0, 32)
+equipBtn.Position = UDim2.new(0, 10, 1, -78)
+discardBtn.Size = UDim2.new(0.48, -6, 0, 32)
+discardBtn.Position = UDim2.new(0.52, 0, 1, -78)
+
 equipBtn.MouseButton1Click:Connect(function()
 	if not selectedUuid then
 		return
@@ -635,6 +911,29 @@ local refreshDetail: () -> ()
 local refreshInventory: () -> ()
 local refreshGear: () -> ()
 local refreshSkills: () -> ()
+local refreshFilterBar: () -> ()
+
+local function matchesInvFilter(defId: string): boolean
+	if invFilter == "All" then
+		return true
+	end
+	local def = ItemDefs.Get(defId)
+	if not def then
+		return false
+	end
+	if invFilter == "Frames" then
+		return defId == "weapon_frame"
+	elseif invFilter == "Handles" then
+		return def.kind == "WeaponHandle"
+	elseif invFilter == "Blades" then
+		return def.kind == "WeaponBlade"
+	elseif invFilter == "Pommels" then
+		return def.kind == "WeaponPommel"
+	elseif invFilter == "Gems" then
+		return def.kind == "ElementGem"
+	end
+	return true
+end
 
 local function abilityName(id: string?): string
 	if not id then
@@ -686,7 +985,11 @@ refreshGear = function()
 					end
 				end
 				local def = defId and ItemDefs.Get(defId)
-				label.Text = shortName(def and def.name or "?", 10)
+				local displayName = def and def.name or "?"
+				if slotId == "main" and snapshot.resolvedMain and snapshot.resolvedMain.displayName then
+					displayName = shortName(snapshot.resolvedMain.displayName, 10)
+				end
+				label.Text = displayName
 				btn.BackgroundColor3 = COL_SLOT_EQ
 				if iconHost and iconHost:IsA("GuiObject") and defId then
 					ItemIcon.Mount(iconHost, defId, { zIndex = 2, yawDeg = 40, pitchDeg = -18 })
@@ -707,31 +1010,77 @@ refreshDetail = function()
 		detailTitle.Text = "Select an item"
 		detailDesc.Text = "Click an inventory slot to inspect."
 		ItemIcon.Clear(detailIconHost)
+		assemblyPanel.Visible = false
 		return
 	end
-	local defId = nil
+	local itemData = nil
 	for _, item in snapshot.items do
 		if item.uuid == selectedUuid then
-			defId = item.defId
+			itemData = item
 			break
 		end
 	end
+	local defId = itemData and itemData.defId
 	local def = defId and ItemDefs.Get(defId)
-	detailTitle.Text = def and def.name or (defId or "?")
+	local isFrame = defId == "weapon_frame"
+	assemblyPanel.Visible = isFrame
+	detailTitle.Text = if isFrame and snapshot.resolvedMain and selectedUuid == snapshot.loadout.main
+		then (snapshot.resolvedMain.displayName or "Weapon Frame")
+		else (def and def.name or (defId or "?"))
 	local lines = {}
 	if def then
 		table.insert(lines, def.kind or "")
 		if def.element then
 			table.insert(lines, "Element: " .. tostring(def.element))
 		end
+		if isFrame and snapshot.resolvedMain and selectedUuid == snapshot.loadout.main then
+			local rm = snapshot.resolvedMain
+			table.insert(lines, "")
+			table.insert(lines, `DMG: {rm.baseDamage} · Element: {rm.element}`)
+			table.insert(lines, `AS mult: {string.format("%.2f", rm.attackSpeedMult or 1)}`)
+		end
 		if def.desc then
 			table.insert(lines, "")
 			table.insert(lines, def.desc)
+		end
+		if isFrame and itemData and itemData.parts then
+			for _, slotName in { "handle", "blade", "pommel" } do
+				local partUuid = (itemData.parts :: any)[slotName]
+				local partName = "(empty)"
+				if partUuid then
+					for _, pi in snapshot.items do
+						if pi.uuid == partUuid then
+							local pd = ItemDefs.Get(pi.defId)
+							partName = pd and pd.name or pi.defId
+							break
+						end
+					end
+				end
+				local btn = partButtons[slotName]
+				if btn then
+					btn.Text = string.upper(slotName) .. "\n" .. shortName(partName, 10)
+				end
+			end
+			local gemName = "(empty)"
+			if itemData.gemUuid then
+				for _, gi in snapshot.items do
+					if gi.uuid == itemData.gemUuid then
+						local gd = ItemDefs.Get(gi.defId)
+						gemName = gd and gd.name or gi.defId
+						break
+					end
+				end
+			end
+			gemBtn.Text = "GEM\n" .. shortName(gemName, 10)
 		end
 		if isEquipped(selectedUuid) then
 			table.insert(lines, "")
 			table.insert(lines, "[Equipped]")
 		end
+	end
+	if pendingInstallSlot then
+		table.insert(lines, "")
+		table.insert(lines, `[Select part for: {pendingInstallSlot}]`)
 	end
 	detailDesc.Text = table.concat(lines, "\n")
 	if defId then
@@ -791,9 +1140,17 @@ refreshInventory = function()
 			child:Destroy()
 		end
 	end
-	local count = math.max(#snapshot.items, 20)
+
+	local visible = {}
+	for _, item in snapshot.items do
+		if not item.installedIn and matchesInvFilter(item.defId) then
+			table.insert(visible, item)
+		end
+	end
+
+	local count = math.max(#visible, 16)
 	for i = 1, count do
-		local item = snapshot.items[i]
+		local item = visible[i]
 		local btn = Instance.new("TextButton")
 		btn.BackgroundColor3 = COL_SLOT
 		btn.BorderSizePixel = 0
@@ -834,6 +1191,25 @@ refreshInventory = function()
 			label.Parent = btn
 
 			btn.MouseButton1Click:Connect(function()
+				if pendingInstallSlot and selectedUuid and item.defId ~= "weapon_frame" then
+					InstallWeaponPart:FireServer(selectedUuid, item.uuid, pendingInstallSlot)
+					pendingInstallSlot = nil
+					return
+				end
+				if item.defId == "ElementGem" then
+					if selectedUuid then
+						for _, it in snapshot.items do
+							if it.uuid == selectedUuid and it.defId == "weapon_frame" then
+								SocketGem:FireServer(selectedUuid, item.uuid)
+								return
+							end
+						end
+					end
+					if snapshot.loadout.main then
+						SocketGem:FireServer(snapshot.loadout.main, item.uuid)
+						return
+					end
+				end
 				selectedUuid = if selectedUuid == item.uuid then nil else item.uuid
 				selectedAbility = nil
 				refreshInventory()
@@ -845,7 +1221,33 @@ refreshInventory = function()
 	end
 	local rows = math.ceil(count / 4)
 	invGrid.CanvasSize = UDim2.fromOffset(0, rows * 69 + 12)
+	refreshFilterBar()
 	refreshDetail()
+end
+
+refreshFilterBar = function()
+	for id, btn in filterButtons do
+		btn.BackgroundColor3 = if invFilter == id then COL_SLOT_SEL else COL_SLOT
+	end
+end
+
+for idx, opt in FILTER_OPTIONS do
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromOffset(52, 24)
+	btn.BackgroundColor3 = COL_SLOT
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 9
+	btn.TextColor3 = COL_TEXT
+	btn.Text = opt.label
+	btn.LayoutOrder = idx
+	btn.Parent = filterBar
+	corner(btn, 4)
+	filterButtons[opt.id] = btn
+	btn.MouseButton1Click:Connect(function()
+		invFilter = opt.id
+		refreshInventory()
+	end)
 end
 
 local function applySnapshot(data: any)
@@ -862,6 +1264,7 @@ local function applySnapshot(data: any)
 	if typeof(data.derived) == "table" then
 		snapshot.derived = data.derived
 	end
+	snapshot.resolvedMain = data.resolvedMain
 	if selectedUuid then
 		local found = false
 		for _, item in snapshot.items do

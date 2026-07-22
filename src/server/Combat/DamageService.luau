@@ -83,20 +83,7 @@ function DamageService.GetDefence(entity: Instance): number
 	if not plr then
 		return CombatConfig.DummyDefence
 	end
-	local def = StatService.Derived(plr.UserId).defenceFromVit
-	local loadout = LoadoutService.Get(plr.UserId)
-	local total = def
-	for _, slot in { "head", "chest", "hands", "feets", "off" } do
-		local uuid = loadout[slot]
-		if uuid then
-			local inst = InventoryService.Find(plr.UserId, uuid)
-			local idef = inst and ItemDefs.Get(inst.defId)
-			if idef and idef.defence then
-				total += idef.defence
-			end
-		end
-	end
-	return total
+	return StatService.Derived(plr.UserId).totalDefence
 end
 
 function DamageService.ApplyHp(entity: Instance, kind: string, amount: number): (number, boolean)
@@ -158,7 +145,9 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 	end
 
 	local stats = StatService.Get(ctx.attacker.UserId)
+	local derived = StatService.Derived(ctx.attacker.UserId)
 	local critChance, critDmg = DamagePipeline.CritStats(stats.STR, stats.DEX)
+	critChance = math.min(critChance + derived.passiveCritChance, CombatConfig.CritChanceCap)
 	local isDotOrBurst = ctx.kind == "DoT" or ctx.kind == "Burst"
 
 	local pipe = DamagePipeline.ResolveDirect({
@@ -168,7 +157,7 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 		comboStep = if isDotOrBurst then nil else ctx.comboStep,
 		familyPerkMult = if isDotOrBurst then 1 else ctx.familyPerkMult,
 		backstabMult = ctx.backstabMult or 1,
-		directBonusMult = 1,
+		directBonusMult = derived.passiveDirectMult,
 		atkElement = ctx.atkElement,
 		defChestElement = DamageService.GetChestElement(entity),
 		defence = DamageService.GetDefence(entity),

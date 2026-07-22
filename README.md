@@ -8,7 +8,7 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 | **Oyuncu dili** | English (UI / items / abilities) |
 | **Tasarım** | Türkçe doküman + chat |
 | **Tema** | Low poly |
-| **Durum** | Combat tasarımı kilit · **lobby kod iskeleti başladı** |
+| **Durum** | Combat alpha · **modüler silah sistemi (WeaponFrame)** |
 | **Repo** | [github.com/Ysfkarabulut/Roblox-Project-arpg](https://github.com/Ysfkarabulut/Roblox-Project-arpg) |
 
 ---
@@ -25,14 +25,15 @@ Third-person action, gear-based build, no class. CannonClash'ten **bağımsız**
 | İçerik (silah, boss, eşya) | Dolduruluyor |
 | Progression, loot, ekonomi | Çerçeve kilit (`GDD.md` §10); sayılar TBD |
 | Playtest slice (eski MVP) | **En son faz** (`GDD.md` §14) |
-| Roblox implementasyonu | Lobby kabuğu (`src/`) · combat henüz yok |
+| Roblox implementasyonu | Combat alpha + modüler silah (`WeaponFrame`, 3 parça + gem) |
 
 ### Kod (Rojo)
 
 ```
-src/shared/Config/   PlaceConfig, QueueConfig, ItemDefs, LoadoutSlots
+src/shared/Config/   ItemDefs, Handle/Blade/Pommel/GemDefs, WeaponResolver
+src/server/Combat/   LA, abilities, dodge/guard/parry, damage pipeline
+src/server/Inventory/ InventoryService, LoadoutService, WeaponAssemblyService
 src/server/Lobby/    PartyService, QueueService, MatchTeleport
-src/server/Inventory/ InventoryService (UUID), LoadoutService
 src/client/Lobby/    LobbyClient stub
 src/client/Inventory/ GearUI + HotbarUI (Q E R 1 2 3, sürükle-bırak)
 ```

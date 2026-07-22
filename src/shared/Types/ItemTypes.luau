@@ -18,6 +18,11 @@ export type ItemKind =
 	| "Chest"
 	| "Hands"
 	| "Feets"
+	| "WeaponHandle"
+	| "WeaponBlade"
+	| "WeaponPommel"
+	| "ElementGem"
+	| "WeaponFrame"
 
 export type ElementTag =
 	"Fire"
@@ -29,6 +34,21 @@ export type ElementTag =
 	| "Rock"
 	| "Neutral"
 	| nil
+
+export type HandleType =
+	"1H_Sword"
+	| "1H_AxeMace"
+	| "1H_WandScepter"
+	| "2H_Sword"
+	| "2H_AxeMace"
+	| "2H_Staff"
+	| "2H_Bow"
+	| "2H_Crossbow"
+
+export type PommelArchetype = "Heavy" | "Balanced" | "Lightweight"
+export type PommelRole = "Pommel" | "String"
+
+export type WeaponPartSlot = "handle" | "blade" | "pommel"
 
 export type AbilitySlot = {
 	id: string,
@@ -56,11 +76,30 @@ export type ItemDef = {
 	rarity: ("Common" | "Rare" | "BossExclusive")?,
 	abilities: { AbilitySlot }?,
 	desc: string?,
+	-- Modular part fields
+	handleType: HandleType?,
+	subFamily: string?,
+	bladeDamageMult: number?,
+	archetype: PommelArchetype?,
+	pommelRole: PommelRole?,
+	damageMult: number?,
+	attackSpeedMult: number?,
+	socketCount: number?,
+	meshKey: string?,
+}
+
+export type WeaponFrameParts = {
+	handle: string?,
+	blade: string?,
+	pommel: string?,
 }
 
 export type ItemInstance = {
 	uuid: string,
 	defId: string,
+	parts: WeaponFrameParts?,
+	gemUuid: string?,
+	installedIn: string?,
 }
 
 export type LoadoutMap = {
