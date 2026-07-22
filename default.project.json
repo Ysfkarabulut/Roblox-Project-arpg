@@ -4,8 +4,17 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
       "Shared": {
         "$path": "src/shared"
+      },
+      "WeaponMeshes": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
+      "CombatAnims": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
       }
     },
     "ServerScriptService": {

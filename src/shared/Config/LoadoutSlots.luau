@@ -6,8 +6,8 @@ local LoadoutSlots = {
 		off = "Off Hand",
 		head = "Head",
 		chest = "Chest",
-		hands = "Hand",
-		feets = "Feets",
+		hands = "Hands",
+		feets = "Boots",
 	} :: { [string]: string },
 }
 

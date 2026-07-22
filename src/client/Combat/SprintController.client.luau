@@ -1,22 +1,29 @@
 --[[
 	Stance-based sprint locomotion (7 styles).
-	Catalog anim + playback speed/lean; foot dust VFX.
+	CombatAnims KeyframeSequence (clipName) via KeyframeClipPlayer when present;
+	otherwise catalog AnimationTrack. Foot dust VFX.
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local AnimConfig = require(game.ReplicatedStorage.Shared.Config.AnimConfig)
-local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
+local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local CombatVfx = require(script.Parent.CombatVfx)
+local KeyframeClipPlayer = require(script.Parent.KeyframeClipPlayer)
 
 local player = Players.LocalPlayer
 
 local sprintTracks: { [string]: AnimationTrack } = {}
+local sprintKf: { [string]: KeyframeSequence } = {}
 local activeTrack: AnimationTrack? = nil
+local activeKfHandle: KeyframeClipPlayer.Handle? = nil
+local activeKfStance: string? = nil
 local loadedChar: Model? = nil
 local dustAcc = 0
+local baseWalkSpeed = CombatConfig.WalkSpeed
 
 local function getAnimator(char: Model): Animator?
 	local hum = char:FindFirstChildOfClass("Humanoid")
@@ -31,32 +38,95 @@ local function getAnimator(char: Model): Animator?
 	return animator
 end
 
+local function findCombatAnimKf(cfg: any): KeyframeSequence?
+	-- Local KeyframeSequence playback via Transform is unreliable for Mixamo imports
+	-- on AnimationConstraint R15 (RegisterAnimationClip → Length=0). Use published
+	-- Animation instances / catalog animId instead. Set UseLocalKFClips=true to experiment.
+	if not _G.UseLocalKFClips then
+		return nil
+	end
+	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
+	if not folder or typeof(cfg) ~= "table" then
+		return nil
+	end
+	local names: { string } = {}
+	if typeof(cfg.clipName) == "string" then
+		table.insert(names, cfg.clipName)
+	end
+	if typeof(cfg.clipNameAlts) == "table" then
+		for _, n in cfg.clipNameAlts do
+			if typeof(n) == "string" then
+				table.insert(names, n)
+			end
+		end
+	end
+	for _, name in names do
+		local kf = KeyframeClipPlayer.Find(folder, name)
+		if kf and KeyframeClipPlayer.GetDuration(kf) > 0.05 then
+			return kf
+		end
+	end
+	return nil
+end
+
+--- Catalog / Animation instance id (no KeyframeSequence registration — that path is Length=0 in Play).
+local function resolveCatalogAnimId(cfg: any): string
+	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
+	if folder and typeof(cfg) == "table" then
+		local names: { string } = {}
+		if typeof(cfg.clipName) == "string" then
+			table.insert(names, cfg.clipName)
+		end
+		if typeof(cfg.clipNameAlts) == "table" then
+			for _, n in cfg.clipNameAlts do
+				if typeof(n) == "string" then
+					table.insert(names, n)
+				end
+			end
+		end
+		for _, name in names do
+			local inst = folder:FindFirstChild(name)
+			if inst and inst:IsA("Animation") and inst.AnimationId ~= "" then
+				return inst.AnimationId
+			end
+		end
+	end
+	if typeof(cfg) == "table" and typeof(cfg.animId) == "string" then
+		return cfg.animId
+	end
+	return AnimConfig.SprintFallback
+end
+
 local function loadSprintTracks(char: Model)
-	if loadedChar == char and next(sprintTracks) then
+	if loadedChar == char and (next(sprintTracks) or next(sprintKf)) then
 		return
 	end
 	table.clear(sprintTracks)
+	table.clear(sprintKf)
 	loadedChar = char
 	local animator = getAnimator(char)
-	if not animator then
-		return
-	end
+
 	for stance, cfg in AnimConfig.Sprint do
-		local anim = Instance.new("Animation")
-		anim.AnimationId = cfg.animId
-		local ok, track = pcall(function()
-			return animator:LoadAnimation(anim)
-		end)
-		if not ok or not track then
-			anim.AnimationId = AnimConfig.SprintFallback
-			ok, track = pcall(function()
+		local kf = findCombatAnimKf(cfg)
+		if kf then
+			sprintKf[stance] = kf
+		elseif animator then
+			local anim = Instance.new("Animation")
+			anim.AnimationId = resolveCatalogAnimId(cfg)
+			local ok, track = pcall(function()
 				return animator:LoadAnimation(anim)
 			end)
-		end
-		if ok and track then
-			track.Looped = true
-			track.Priority = Enum.AnimationPriority.Movement
-			sprintTracks[stance] = track
+			if not ok or not track then
+				anim.AnimationId = AnimConfig.SprintFallback
+				ok, track = pcall(function()
+					return animator:LoadAnimation(anim)
+				end)
+			end
+			if ok and track then
+				track.Looped = true
+				track.Priority = Enum.AnimationPriority.Movement
+				sprintTracks[stance] = track
+			end
 		end
 	end
 end
@@ -70,6 +140,11 @@ local function currentStance(): string
 end
 
 local function stopSprint()
+	if activeKfHandle then
+		activeKfHandle.stop()
+		activeKfHandle = nil
+		activeKfStance = nil
+	end
 	if activeTrack then
 		activeTrack:Stop(0.2)
 		activeTrack = nil
@@ -77,7 +152,27 @@ local function stopSprint()
 end
 
 local function startSprint(stance: string)
-	loadSprintTracks(player.Character :: Model)
+	local char = player.Character
+	if not char then
+		return
+	end
+	loadSprintTracks(char)
+
+	local kf = sprintKf[stance]
+	if kf then
+		if activeKfStance == stance and activeKfHandle and activeKfHandle.isPlaying() then
+			return
+		end
+		stopSprint()
+		local cfg = AnimConfig.Sprint[stance]
+		activeKfHandle = KeyframeClipPlayer.Play(char, kf, {
+			looped = true,
+			speed = (cfg and cfg.speed) or 1,
+		})
+		activeKfStance = stance
+		return
+	end
+
 	local track = sprintTracks[stance]
 	if not track then
 		return
@@ -96,8 +191,6 @@ local function applyLean(char: Model, leanDeg: number, on: boolean)
 	if not hrp then
 		return
 	end
-	-- Soft visual lean via attribute consumed nowhere else — optional BodyGyro avoided.
-	-- Use Humanoid CameraOffset-ish: tilt accessory folder
 	local leanFolder = char:FindFirstChild("SprintLean")
 	if not on then
 		if leanFolder then
@@ -105,8 +198,11 @@ local function applyLean(char: Model, leanDeg: number, on: boolean)
 		end
 		return
 	end
-	-- Store lean for dust color / debug
 	char:SetAttribute("SprintLean", leanDeg)
+end
+
+local function applyWalkSpeed(hum: Humanoid, sprinting: boolean)
+	hum.WalkSpeed = if sprinting then CombatConfig.SprintWalkSpeed else baseWalkSpeed
 end
 
 local function isSprinting(): boolean
@@ -124,6 +220,10 @@ local function isSprinting(): boolean
 	if hum.FloorMaterial == Enum.Material.Air then
 		return false
 	end
+	local stam = player:GetAttribute("Stamina")
+	if typeof(stam) == "number" and stam <= 0 then
+		return false
+	end
 	return true
 end
 
@@ -135,10 +235,16 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 	loadSprintTracks(char)
 
+	local hum = char:FindFirstChildOfClass("Humanoid")
 	local stance = currentStance()
 	local cfg = AnimConfig.Sprint[stance] or AnimConfig.Sprint.OneHandFocus
+	local sprinting = isSprinting()
 
-	if isSprinting() then
+	if hum then
+		applyWalkSpeed(hum, sprinting)
+	end
+
+	if sprinting then
 		startSprint(stance)
 		applyLean(char, cfg.lean, true)
 		dustAcc += dt
@@ -146,7 +252,6 @@ RunService.RenderStepped:Connect(function(dt)
 			dustAcc = 0
 			local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
 			if hrp then
-				-- Stance tint: map stance to slight color variation
 				local tint = Color3.fromRGB(190, 190, 195)
 				if stance == "Bow" or stance == "Staff" then
 					tint = Color3.fromRGB(160, 200, 255)
@@ -169,13 +274,19 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
-player.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function(char)
+	stopSprint()
 	table.clear(sprintTracks)
+	table.clear(sprintKf)
 	loadedChar = nil
 	activeTrack = nil
+	local hum = char:WaitForChild("Humanoid", 5) :: Humanoid?
+	if hum then
+		baseWalkSpeed = CombatConfig.WalkSpeed
+		hum.WalkSpeed = baseWalkSpeed
+	end
 end)
 
--- Expose for UI / debug
 _G.GetCombatStance = currentStance
 
-print("[SprintController] 7 stance sprints ready")
+print("[SprintController] sprint ready (KF clip player + catalog fallback)")

@@ -1,5 +1,5 @@
 --[[
-	Rich combat VFX — ParticleEmitter, Trail, Beam, PointLight, neon parts.
+	Rich combat VFX — family-aware LA arcs, bolts, trails, impacts.
 ]]
 
 local TweenService = game:GetService("TweenService")
@@ -160,6 +160,197 @@ local function fadeDestroy(inst: Instance, sec: number)
 	end
 end
 
+--- Sweeping neon arc made of wedge segments (reads as a real slash)
+local function slashArc(origin: Vector3, look: Vector3, col: Color3, opts: {
+	arcDeg: number?,
+	dist: number?,
+	height: number?,
+	segments: number?,
+	thickness: number?,
+	life: number?,
+	pitchBias: number?, -- degrees: + = overhead chop, - = upward
+	side: number?, -- +1 right-to-left start, -1 reverse
+})
+	local arcDeg = opts.arcDeg or 80
+	local dist = opts.dist or 6
+	local height = opts.height or 1.1
+	local segs = opts.segments or 8
+	local thick = opts.thickness or 0.14
+	local life = opts.life or 0.32
+	local pitchBias = math.rad(opts.pitchBias or 0)
+	local side = opts.side or 1
+
+	local basis = CFrame.lookAt(origin, origin + look)
+	local startAng = -math.rad(arcDeg) * 0.5 * side
+	local endAng = math.rad(arcDeg) * 0.5 * side
+
+	local host = anchorPart(basis * CFrame.new(0, height, -dist * 0.15))
+	addLight(host, col, 2.8, 11)
+
+	for i = 1, segs do
+		local t0 = (i - 1) / segs
+		local t1 = i / segs
+		local a0 = startAng + (endAng - startAng) * t0
+		local a1 = startAng + (endAng - startAng) * t1
+		local mid = (a0 + a1) * 0.5
+		local span = math.abs(a1 - a0)
+
+		local wedge = Instance.new("WedgePart")
+		wedge.Anchored = true
+		wedge.CanCollide = false
+		wedge.CanQuery = false
+		wedge.CanTouch = false
+		wedge.Material = Enum.Material.Neon
+		wedge.Color = col
+		wedge.Transparency = 0.15
+		local width = math.max(0.8, dist * math.tan(span * 0.55) * 2)
+		wedge.Size = Vector3.new(thick, width * 0.55, dist * 0.92)
+		local localCf = CFrame.new(0, height * 0.15, 0)
+			* CFrame.Angles(pitchBias, mid, 0)
+			* CFrame.new(0, 0, -dist * 0.48)
+			* CFrame.Angles(0, 0, math.rad(90))
+		wedge.CFrame = basis * localCf
+		wedge.Parent = folder
+
+		-- Stagger appearance: sweep feel
+		wedge.Transparency = 0.85
+		task.delay(t0 * life * 0.35, function()
+			if wedge.Parent then
+				TweenService:Create(wedge, TweenInfo.new(0.05), { Transparency = 0.12 }):Play()
+				task.delay(life * 0.45, function()
+					if wedge.Parent then
+						TweenService:Create(wedge, TweenInfo.new(life * 0.4), { Transparency = 1 }):Play()
+					end
+				end)
+			end
+		end)
+		fadeDestroy(wedge, life + 0.15)
+	end
+
+	local att = Instance.new("Attachment")
+	att.Parent = host
+	burstParticles(att, col, {
+		rate = 18 + segs * 2,
+		speed = 9 + dist * 0.4,
+		size = 0.4,
+		spread = arcDeg * 0.4,
+		life = 0.28,
+	})
+	fadeDestroy(host, life + 0.2)
+end
+
+local function stabLines(origin: Vector3, look: Vector3, col: Color3, count: number, dist: number)
+	local basis = CFrame.lookAt(origin + Vector3.new(0, 1.2, 0), origin + look * dist + Vector3.new(0, 1.2, 0))
+	for i = 1, count do
+		local offset = Vector3.new((i - (count + 1) / 2) * 0.35, (i % 2) * 0.25, 0)
+		local line = Instance.new("Part")
+		line.Anchored = true
+		line.CanCollide = false
+		line.Material = Enum.Material.Neon
+		line.Color = col
+		line.Size = Vector3.new(0.12, 0.12, dist * (0.55 + i * 0.08))
+		line.CFrame = basis * CFrame.new(offset) * CFrame.new(0, 0, -dist * 0.4)
+		line.Transparency = 0.2
+		line.Parent = folder
+		TweenService:Create(line, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			CFrame = line.CFrame * CFrame.new(0, 0, -dist * 0.25),
+			Transparency = 1,
+		}):Play()
+		fadeDestroy(line, 0.28)
+	end
+end
+
+local function smashRing(origin: Vector3, look: Vector3, col: Color3, radius: number)
+	local hit = origin + look * (radius * 0.55) + Vector3.new(0, 0.15, 0)
+	local host = anchorPart(CFrame.new(hit))
+	addLight(host, col, 4, radius * 1.4)
+	local att = Instance.new("Attachment")
+	att.Parent = host
+	burstParticles(att, col, { rate = 40, speed = 14, size = 0.55, spread = 60, life = 0.35 })
+	smokePuff(att, col, 14)
+	local ring = Instance.new("Part")
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.Material = Enum.Material.Neon
+	ring.Color = col
+	ring.Size = Vector3.new(0.25, 0.6, 0.6)
+	ring.CFrame = CFrame.new(hit) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Transparency = 0.15
+	ring.Parent = folder
+	TweenService:Create(ring, TweenInfo.new(0.32, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.15, radius * 2.2, radius * 2.2),
+		Transparency = 1,
+	}):Play()
+	fadeDestroy(ring, 0.4)
+	fadeDestroy(host, 0.45)
+end
+
+local function playSlashFamily(fx: any, origin: Vector3, look: Vector3, col: Color3, step: number, range: number)
+	local fam = fx.family or "Sword1H"
+	local dist = range * (0.5 + step * 0.1)
+
+	if fam == "Dagger" then
+		stabLines(origin, look, col, 2 + step, dist * 0.85)
+		slashArc(origin, look, col, {
+			arcDeg = 40 + step * 12,
+			dist = dist * 0.7,
+			segments = 5,
+			thickness = 0.1,
+			life = 0.22,
+			pitchBias = -12,
+			side = if step == 2 then -1 else 1,
+		})
+	elseif fam == "Mace1H" or fam == "Mace2H" then
+		slashArc(origin, look, col, {
+			arcDeg = 50 + step * 10,
+			dist = dist * 0.75,
+			segments = 6,
+			thickness = 0.22,
+			life = 0.28,
+			pitchBias = 55 + step * 8,
+			side = 1,
+		})
+		if step >= 2 then
+			smashRing(origin, look, col, dist * 0.55)
+		end
+	elseif fam == "Axe1H" or fam == "Axe2H" then
+		slashArc(origin, look, col, {
+			arcDeg = 70 + step * 18,
+			dist = dist,
+			segments = 7 + step,
+			thickness = 0.18,
+			life = 0.34,
+			pitchBias = 35 + step * 10,
+			side = if step == 2 then -1 else 1,
+		})
+		if step == 3 then
+			smashRing(origin, look, col, dist * 0.45)
+		end
+	elseif fam == "Scepter" then
+		slashArc(origin, look, col, {
+			arcDeg = 95 + step * 15,
+			dist = dist * 1.05,
+			segments = 9,
+			thickness = 0.12,
+			life = 0.3,
+			pitchBias = 5,
+			side = if step == 2 then -1 else 1,
+		})
+	else
+		-- Sword / default melee
+		slashArc(origin, look, col, {
+			arcDeg = 75 + step * 22,
+			dist = dist,
+			segments = 7 + step,
+			thickness = 0.12 + step * 0.02,
+			life = 0.28 + step * 0.03,
+			pitchBias = if step == 3 then 18 else (if step == 2 then -8 else 5),
+			side = if step == 2 then -1 else 1,
+		})
+	end
+end
+
 function CombatVfx.Play(fx: any)
 	if typeof(fx) ~= "table" then
 		return
@@ -174,11 +365,13 @@ function CombatVfx.Play(fx: any)
 	local range = fx.range or 8
 	local vfx = fx.vfx or "Slash"
 	local step = fx.comboStep or 1
+	local fam = fx.family or ""
 
 	if vfx == "Bolt" then
-		local tip = origin + look * math.clamp(range * 0.9, 6, 40)
-		local dist = (tip - origin).Magnitude
-		local host = anchorPart(CFrame.lookAt(origin, tip))
+		local tip = origin + look * math.clamp(range * 0.9, 6, 40) + Vector3.new(0, 1.3, 0)
+		local start = origin + Vector3.new(0, 1.3, 0)
+		local dist = (tip - start).Magnitude
+		local host = anchorPart(CFrame.lookAt(start, tip))
 		local a0 = Instance.new("Attachment")
 		a0.Position = Vector3.zero
 		a0.Parent = host
@@ -186,68 +379,64 @@ function CombatVfx.Play(fx: any)
 		a1.Position = Vector3.new(0, 0, -dist)
 		a1.Parent = host
 		addBeam(a0, a1, col)
-		addLight(host, col, 3, 14)
-		burstParticles(a0, col, { rate = 18, speed = 6, size = 0.35, spread = 0.4, spread = 12 })
-		burstParticles(a1, col, { rate = 36, speed = 14, size = 0.5, size = 0.55, spread = 35 })
-		smokePuff(a1, col, 6)
-		-- streak part
+		addLight(host, col, 3.2 + step * 0.4, 14)
+		burstParticles(a0, col, { rate = 14 + step * 4, speed = 5, size = 0.3, spread = 8, life = 0.25 })
+		burstParticles(a1, col, { rate = 30 + step * 8, speed = 12, life = 0.45, size = 0.5, spread = 28 })
+		smokePuff(a1, col, 5 + step)
+
 		local streak = Instance.new("Part")
 		streak.Anchored = true
 		streak.CanCollide = false
 		streak.Material = Enum.Material.Neon
 		streak.Color = col
-		streak.Size = Vector3.new(0.2 + step * 0.05, 0.2, dist)
-		streak.CFrame = CFrame.lookAt(origin:Lerp(tip, 0.5), tip)
-		streak.Transparency = 0.25
+		local thick = if fam == "Staff" then 0.28 else (if fam == "Crossbow" then 0.22 else 0.16)
+		streak.Size = Vector3.new(thick + step * 0.04, thick, dist)
+		streak.CFrame = CFrame.lookAt(start:Lerp(tip, 0.5), tip)
+		streak.Transparency = 0.2
 		streak.Parent = folder
-		fadeDestroy(streak, 0.2)
-		fadeDestroy(host, 0.45)
-	elseif vfx == "Slash" or vfx == "Cone" then
-		local arc = if vfx == "Cone" then (fx.coneDeg or 90) else (55 + step * 22)
+		fadeDestroy(streak, 0.18 + step * 0.03)
+		fadeDestroy(host, 0.42)
+
+		-- Muzzle flash near hands
+		local muzzle = anchorPart(CFrame.new(start))
+		local matt = Instance.new("Attachment")
+		matt.Parent = muzzle
+		burstParticles(matt, col, { rate = 16, speed = 8, size = 0.35, spread = 40, life = 0.2 })
+		fadeDestroy(muzzle, 0.3)
+	elseif vfx == "Slash" then
+		playSlashFamily(fx, origin, look, col, step, range)
+	elseif vfx == "Cone" then
+		local arc = fx.coneDeg or 90
 		local dist = range * (0.55 + step * 0.08)
-		local host = anchorPart(CFrame.lookAt(origin, origin + look * dist) + look * (dist * 0.45))
-		addLight(host, col, 2.5 + step * 0.4, 10 + step * 2)
+		slashArc(origin, look, col, {
+			arcDeg = arc,
+			dist = dist,
+			segments = 10,
+			thickness = 0.11,
+			life = 0.36,
+			pitchBias = 0,
+			side = 1,
+		})
+		local host = anchorPart(CFrame.lookAt(origin, origin + look * dist) + look * (dist * 0.4) + Vector3.new(0, 1, 0))
 		local aMid = Instance.new("Attachment")
 		aMid.Parent = host
 		burstParticles(aMid, col, {
-			rate = 22 + step * 10,
-			speed = 10 + step * 3,
-			size = 0.45 + step * 0.1,
-			spread = arc * 0.5,
-			life = 0.3,
+			rate = 28 + step * 10,
+			speed = 11,
+			size = 0.5,
+			spread = arc * 0.45,
+			life = 0.32,
 		})
-		-- trail slash ribbon
-		local p0 = anchorPart(CFrame.new(origin + look * 1.5 + Vector3.new(0, 1.2, 0)))
-		local p1 = anchorPart(CFrame.new(origin + look * dist + Vector3.new(0, 0.4, 0)))
-		local t0 = Instance.new("Attachment")
-		t0.Parent = p0
-		local t1 = Instance.new("Attachment")
-		t1.Parent = p1
-		addTrail(t0, t1, col, 0.35)
-		local blade = Instance.new("Part")
-		blade.Anchored = true
-		blade.CanCollide = false
-		blade.Material = Enum.Material.Neon
-		blade.Color = col
-		blade.Transparency = 0.35
-		local w = math.rad(arc)
-		blade.Size = Vector3.new(math.clamp(dist * math.tan(w / 2) * 2, 2.5, 16), 0.12 + step * 0.04, dist)
-		blade.CFrame = CFrame.lookAt(origin + look * (dist / 2 + 1), origin + look * dist)
-		blade.Parent = folder
-		if vfx == "Cone" then
-			smokePuff(aMid, col, 10)
-		end
-		fadeDestroy(blade, 0.28)
-		fadeDestroy(host, 0.4)
-		fadeDestroy(p0, 0.4)
-		fadeDestroy(p1, 0.4)
+		smokePuff(aMid, col, 12)
+		addLight(host, col, 3, 12)
+		fadeDestroy(host, 0.45)
 	elseif vfx == "Burst" then
 		local r = (fx.radius or range)
 		local host = anchorPart(CFrame.new(origin + Vector3.new(0, 1, 0)))
 		addLight(host, col, 5, r * 1.5)
 		local att = Instance.new("Attachment")
 		att.Parent = host
-		burstParticles(att, col, { rate = 55, speed = 18, size = 0.8, spread = 0.7, spread = 180 })
+		burstParticles(att, col, { rate = 55, speed = 18, size = 0.8, size = 0.7, spread = 180 })
 		smokePuff(att, col, 20)
 		local ring = Instance.new("Part")
 		ring.Shape = Enum.PartType.Cylinder
@@ -267,29 +456,21 @@ function CombatVfx.Play(fx: any)
 		fadeDestroy(host, 0.55)
 	elseif vfx == "Dash" then
 		local tip = origin + look * (range * 0.5)
+		local dist = (tip - origin).Magnitude
 		local host = anchorPart(CFrame.lookAt(origin, tip))
 		local a0 = Instance.new("Attachment")
 		a0.Parent = host
 		local a1 = Instance.new("Attachment")
 		a1.Position = Vector3.new(0, 0, -dist)
 		a1.Parent = host
-		addTrail(
-			(function()
-				local x = Instance.new("Attachment")
-				x.Position = Vector3.new(0, 0.4, 0)
-				x.Parent = host
-				return x
-			end)(),
-			(function()
-				local x = Instance.new("Attachment")
-				x.Position = Vector3.new(0, -0.4, 0)
-				x.Parent = host
-				return x
-			end)(),
-			col,
-			0.4
-		)
-		burstParticles(a0, col, { rate = 30, speed = 12, size = 0.45, spread = 0.5, spread = 20 })
+		local t0 = Instance.new("Attachment")
+		t0.Position = Vector3.new(0, 0.4, 0)
+		t0.Parent = host
+		local t1 = Instance.new("Attachment")
+		t1.Position = Vector3.new(0, -0.4, 0)
+		t1.Parent = host
+		addTrail(t0, t1, col, 0.4)
+		burstParticles(a0, col, { rate = 30, speed = 12, size = 0.45, size = 0.5, spread = 20 })
 		smokePuff(a0, col, 8)
 		addLight(host, col, 2, 10)
 		fadeDestroy(host, 0.4)
@@ -334,7 +515,7 @@ function CombatVfx.PlayReaction(reactionId: string, position: Vector3)
 	addLight(host, col, 6, 16)
 	local att = Instance.new("Attachment")
 	att.Parent = host
-	burstParticles(att, col, { rate = 48, speed = 16, size = 0.9, size = 0.7, spread = 180 })
+	burstParticles(att, col, { rate = 48, speed = 16, life = 0.9, size = 0.7, spread = 180 })
 	smokePuff(att, col, 16)
 	local ring = Instance.new("Part")
 	ring.Shape = Enum.PartType.Ball

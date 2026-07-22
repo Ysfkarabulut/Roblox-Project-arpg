@@ -1,6 +1,6 @@
 --[[
 	Combat input — LMB light attack, hotbar actives, Shift dodge, RMB guard/parry.
-	Aim: soft aimlock (F4) or mouse ray.
+	F4: classic shift lock (mouse center + face camera). Soft aimlock deferred.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,20 +34,24 @@ local GetSnapshot = invRemotes:WaitForChild("GetSnapshot") :: RemoteFunction
 
 local hotbar: { [number]: string? } = {}
 local cdUntil: { [string]: number } = {}
-local aimlock = true
+local shiftLock = true
 -- Server-authoritative defend stance (guard OR parry). Do not set locally on RMB.
 local defending = false
 local rmbHeld = false
+
+local SHIFT_LOCK_OFFSET = CombatConfig.ShiftLockCameraOffset or Vector3.new(1.75, 0, 0)
 
 -- Stamina HUD
 local gui = Instance.new("ScreenGui")
 gui.Name = "CombatHud"
 gui.ResetOnSpawn = false
+gui.DisplayOrder = 6
+gui.IgnoreGuiInset = true
 gui.Parent = playerGui
 
 local stamBarBg = Instance.new("Frame")
 stamBarBg.Size = UDim2.fromOffset(220, 14)
-stamBarBg.Position = UDim2.new(0.5, -110, 1, -110)
+stamBarBg.Position = UDim2.new(0.5, -110, 1, -200)
 stamBarBg.BackgroundColor3 = Color3.fromRGB(30, 32, 38)
 stamBarBg.BorderSizePixel = 0
 stamBarBg.Parent = gui
@@ -68,12 +72,12 @@ do
 end
 local aimLabel = Instance.new("TextLabel")
 aimLabel.Size = UDim2.fromOffset(160, 18)
-aimLabel.Position = UDim2.new(0.5, -80, 1, -132)
+aimLabel.Position = UDim2.new(0.5, -80, 1, -222)
 aimLabel.BackgroundTransparency = 1
 aimLabel.Font = Enum.Font.Gotham
 aimLabel.TextSize = 11
-aimLabel.TextColor3 = Color3.fromRGB(160, 170, 180)
-aimLabel.Text = "Aimlock ON (F4)"
+aimLabel.TextColor3 = Color3.fromRGB(120, 220, 140)
+aimLabel.Text = "ShiftLock ON (F4)"
 aimLabel.Parent = gui
 
 local function refreshHotbar(snap: any)
@@ -96,71 +100,63 @@ local function isTyping(): boolean
 	return UserInputService:GetFocusedTextBox() ~= nil
 end
 
-local function findAimlockTarget(): Vector3?
-	if not aimlock or not player.Character then
-		return nil
+local function getHumanoid(): Humanoid?
+	local char = player.Character
+	return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+local function applyShiftLockState()
+	local hum = getHumanoid()
+	if shiftLock then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+		UserInputService.MouseIconEnabled = false
+		if hum then
+			hum.AutoRotate = false
+			hum.CameraOffset = SHIFT_LOCK_OFFSET
+		end
+		aimLabel.Text = "ShiftLock ON (F4)"
+		aimLabel.TextColor3 = Color3.fromRGB(120, 220, 140)
+	else
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = true
+		if hum then
+			hum.AutoRotate = true
+			hum.CameraOffset = Vector3.zero
+		end
+		aimLabel.Text = "ShiftLock OFF (F4)"
+		aimLabel.TextColor3 = Color3.fromRGB(160, 170, 180)
 	end
-	local hrp = player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not hrp then
-		return nil
+end
+
+--- Face camera yaw only — never override camera CFrame (that caused pitch slide).
+local function updateShiftLockCharacter()
+	if not shiftLock or isTyping() then
+		return
 	end
-	local look = camera.CFrame.LookVector
-	local best: BasePart? = nil
-	local bestScore = -1e9
-	local function consider(model: Model)
-		if model == player.Character then
-			return
-		end
-		local pp = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
-		if not pp or not pp:IsA("BasePart") then
-			return
-		end
-		local offset = pp.Position - hrp.Position
-		local dist = offset.Magnitude
-		if dist > CombatConfig.AimlockRange or dist < 1 then
-			return
-		end
-		local flat = Vector3.new(offset.X, 0, offset.Z)
-		if flat.Magnitude < 0.2 then
-			return
-		end
-		local ang = math.deg(math.acos(math.clamp(look:Dot(offset.Unit), -1, 1)))
-		if ang > CombatConfig.AimlockConeDeg then
-			return
-		end
-		local score = -ang * 2 - dist * 0.1
-		if score > bestScore then
-			bestScore = score
-			best = pp
-		end
+	camera = Workspace.CurrentCamera
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not camera or not hrp then
+		return
 	end
-	local dummy = Workspace:FindFirstChild("TrainingDummy")
-	if dummy and dummy:IsA("Model") then
-		consider(dummy)
+	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
+	local flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
+	if flat.Magnitude > 0.1 then
+		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
 	end
-	for _, plr in Players:GetPlayers() do
-		if plr ~= player and plr.Character then
-			consider(plr.Character)
-		end
-	end
-	return if best then best.Position else nil
 end
 
 local function aimPayload(): (Vector3, Vector3)
-	local lockPos = findAimlockTarget()
+	camera = Workspace.CurrentCamera
 	local look = camera.CFrame.LookVector
-	if lockPos then
-		local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if hrp then
-			local to = (lockPos - hrp.Position)
-			if to.Magnitude > 0.1 then
-				look = look:Lerp(to.Unit, CombatConfig.AimlockSoftness)
-			end
-		end
-		return look, lockPos
+	local ray
+	if shiftLock then
+		local vp = camera.ViewportSize
+		ray = camera:ViewportPointToRay(vp.X * 0.5, vp.Y * 0.5)
+	else
+		local mouse = UserInputService:GetMouseLocation()
+		ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	end
-	local mouse = UserInputService:GetMouseLocation()
-	local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	if player.Character then
@@ -180,7 +176,6 @@ local function tryCastSlot(slotIndex: number)
 		return
 	end
 	local look, aim = aimPayload()
-	CombatAnim.Play("Cast")
 	CastAbility:FireServer(abilityId, look, aim)
 end
 
@@ -198,17 +193,17 @@ local function doDodge()
 	if dir.Magnitude < 0.1 then
 		dir = camera.CFrame.LookVector
 	end
-	CombatAnim.Play("Dodge")
 	DodgeRemote:FireServer(dir)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or isTyping() then
+	-- F4 shift lock — Studio/UI often marks this processed; still allow
+	if input.KeyCode == Enum.KeyCode.F4 and not isTyping() then
+		shiftLock = not shiftLock
+		applyShiftLockState()
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.F4 then
-		aimlock = not aimlock
-		aimLabel.Text = if aimlock then "Aimlock ON (F4)" else "Aimlock OFF · mouse (F4)"
+	if processed or isTyping() then
 		return
 	end
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -242,9 +237,27 @@ end)
 
 -- Sprint: hold Ctrl
 RunService.RenderStepped:Connect(function()
-	local sprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
+	local sprint = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) and not isTyping()
 	player:SetAttribute("Sprinting", sprint)
 end)
+
+-- Character yaw only; Roblox camera owns pitch/yaw from mouse
+RunService:BindToRenderStep("CombatShiftLock", Enum.RenderPriority.Character.Value, function()
+	if isTyping() then
+		if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+			UserInputService.MouseIconEnabled = true
+		end
+		return
+	end
+	updateShiftLockCharacter()
+end)
+
+player.CharacterAdded:Connect(function()
+	task.defer(applyShiftLockState)
+end)
+
+applyShiftLockState()
 
 CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 	if typeof(fx) ~= "table" then
@@ -252,7 +265,7 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 	end
 	if userId == player.UserId then
 		local animKey = fx.anim or "Melee"
-		CombatAnim.Play(animKey, fx.family, fx.comboStep)
+		CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
 	end
 	CombatVfx.Play(fx)
 end)
@@ -320,4 +333,4 @@ StaminaUpdate.OnClientEvent:Connect(function(payload: any)
 	end
 end)
 
-print("[CombatInput] LMB LA · Shift dodge · RMB guard/parry · Ctrl sprint · F4 aimlock · QER123")
+print("[CombatInput] LMB LA · Shift dodge · RMB guard/parry · Ctrl sprint · F4 shiftlock · QER123")

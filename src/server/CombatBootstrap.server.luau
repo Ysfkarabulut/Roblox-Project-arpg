@@ -17,6 +17,7 @@ local ParryService = require(script.Parent.Combat.ParryService)
 local StaminaService = require(script.Parent.Combat.StaminaService)
 local WeaponVisualService = require(script.Parent.Combat.WeaponVisualService)
 local StatusService = require(script.Parent.Combat.StatusService)
+local CombatConfig = require(ReplicatedStorage.Shared.Config.CombatConfig)
 
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "CombatRemotes"
@@ -82,8 +83,16 @@ Dodge.OnServerEvent:Connect(function(player: Player, moveDir: Vector3?)
 			vfx = "Dash",
 			element = "Wind",
 			origin = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and (player.Character.HumanoidRootPart :: BasePart).Position,
-			look = moveDir or Vector3.new(0, 0, -1),
-			range = 8,
+			look = (function()
+				local d = moveDir
+				if typeof(d) ~= "Vector3" or d.Magnitude < 0.1 then
+					local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+					d = if hrp then hrp.CFrame.LookVector else Vector3.new(0, 0, -1)
+				end
+				d = Vector3.new(d.X, 0, d.Z)
+				return if d.Magnitude > 0.1 then d.Unit else Vector3.new(0, 0, -1)
+			end)(),
+			range = CombatConfig.DodgeDistance,
 		}, nil)
 	end
 end)

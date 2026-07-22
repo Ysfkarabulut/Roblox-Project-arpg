@@ -35,6 +35,7 @@ local EquipItem = remoteEvent("EquipItem")
 local UnequipSlot = remoteEvent("UnequipSlot")
 local BindAbility = remoteEvent("BindAbility")
 local UnbindHotbar = remoteEvent("UnbindHotbar")
+local DiscardItem = remoteEvent("DiscardItem")
 local InventoryUpdated = remoteEvent("InventoryUpdated")
 
 local function resolveStance(userId: number): string
@@ -122,6 +123,24 @@ UnbindHotbar.OnServerEvent:Connect(function(player: Player, slotIndex: number)
 		return
 	end
 	HotbarService.Unbind(player.UserId, slotIndex)
+	push(player)
+end)
+
+DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
+	if typeof(uuid) ~= "string" then
+		return
+	end
+	local userId = player.UserId
+	local slot = LoadoutService.GetSlotOf(userId, uuid)
+	if slot then
+		LoadoutService.Unequip(userId, slot)
+	end
+	if InventoryService.RemoveItem(userId, uuid) then
+		HotbarService.Prune(userId)
+		if _G.RefreshWeaponVisuals then
+			_G.RefreshWeaponVisuals(player)
+		end
+	end
 	push(player)
 end)
 

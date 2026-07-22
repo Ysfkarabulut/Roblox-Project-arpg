@@ -68,15 +68,21 @@ end
 
 function InventoryService.GrantStarter(userId: number)
 	local bag = ensureBag(userId)
-	if #bag > 0 then
-		return
-	end
-	-- Küçük starter; kalanı Dev Tool (F8) ile spawn
+	-- Her aileden 1 silah (matris = aile × 8 element ≈ 96; lobby'de hepsi yok)
+	-- Eksik starter parçalarını sonradan da tamamla (eski bag boş sayılmaz)
 	local starter = {
 		"w_dagger_fire",
 		"w_sword_1h_lightning",
+		"w_axe_1h_rock",
+		"w_mace_1h_water",
+		"w_wand_fire",
+		"w_scepter_lightning",
 		"w_sword_2h_steel",
 		"w_axe_2h_rock",
+		"w_mace_2h_poison",
+		"w_staff_wind",
+		"w_bow_wind",
+		"w_crossbow_lightning",
 		"o_kite",
 		"o_buckler",
 		"o_tower",
@@ -90,8 +96,17 @@ function InventoryService.GrantStarter(userId: number)
 		"a_feets_tidewalkers",
 		"a_chest_thornplate",
 	}
+	local have: { [string]: boolean } = {}
+	for _, inst in bag do
+		if typeof(inst) == "table" and typeof(inst.defId) == "string" then
+			have[inst.defId] = true
+		end
+	end
 	for _, defId in starter do
-		InventoryService.AddItem(userId, defId)
+		if not have[defId] then
+			InventoryService.AddItem(userId, defId)
+			have[defId] = true
+		end
 	end
 end
 

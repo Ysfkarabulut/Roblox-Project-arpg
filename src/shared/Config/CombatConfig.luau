@@ -38,10 +38,13 @@ local CombatConfig = {
 	MatchupWeak = 0.85,
 
 	DodgeCost = 18,
-	DodgeIFrameSec = 0.20,
-	DodgeRecoverySec = 0.25,
-	DodgeDistance = 12,
+	DodgeIFrameSec = 0.22,
+	DodgeRecoverySec = 0.28,
+	DodgeDistance = 11,
+	DodgeDashSec = 0.32,
 	SprintDrainPerSec = 12,
+	WalkSpeed = 16,
+	SprintWalkSpeed = 24, -- Ctrl sprint (1.5×)
 
 	GuardHitStamFactor = 0.12,
 	GuardHitStamMin = 8,
@@ -63,9 +66,9 @@ local CombatConfig = {
 	MeleeRange = 10,
 	DefaultWeaponBase = 40,
 
-	AimlockConeDeg = 35,
-	AimlockRange = 40,
-	AimlockSoftness = 0.35, -- client lerp toward lock
+	-- Classic over-the-shoulder offset while F4 shift lock is on.
+	-- Soft target aimlock deferred — do not drive camera look-at here.
+	ShiftLockCameraOffset = Vector3.new(1.75, 0, 0),
 }
 
 CombatConfig.AsTierMult = {
