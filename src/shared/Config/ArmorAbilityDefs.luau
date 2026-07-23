@@ -1,6 +1,6 @@
 --[[
-	Global armor ability catalog — `*_armorpassive` and `*_armoractive` ids.
-	Armor item defs reference by id; runtime hooks TBD per passive/active.
+	Global armor ability catalog — `*_armorpassive` / `*_armoractive`.
+	Item defs reference by id; Combat params for actives → AbilityRuntime.
 ]]
 
 local ArmorAbilityDefs = {}
@@ -16,7 +16,50 @@ export type ArmorAbilityDef = {
 }
 
 local CATALOG: { [string]: ArmorAbilityDef } = {
-	-- Add armor passives/actives here when armor is redesigned.
+	carapace_armorpassive = {
+		id = "carapace_armorpassive",
+		name = "Carapace",
+		desc = "When you take Direct HP damage: 10% chance apply chest element status to attacker (not chip; no chain)",
+		kind = "Passive",
+	},
+	unbound_hide_armorpassive = {
+		id = "unbound_hide_armorpassive",
+		name = "Unbound Hide",
+		desc = "Direct taken −3% (after DR) · no Thorn",
+		kind = "Passive",
+	},
+	helm_pulse_armoractive = {
+		id = "helm_pulse_armoractive",
+		name = "Helm Pulse",
+		desc = "Self: next 2 light attacks apply armor element · 6s window · stam 0",
+		kind = "Active",
+		defaultCooldownSec = 14,
+	},
+	stone_focus_armorpassive = {
+		id = "stone_focus_armorpassive",
+		name = "Stone Focus",
+		desc = "Fortify from any source: duration +0.5s",
+		kind = "Passive",
+	},
+	hand_touch_armoractive = {
+		id = "hand_touch_armoractive",
+		name = "Element Touch",
+		desc = "Touch strike · 6 stud · 120% main WeaponBase · armor element · stam 0",
+		kind = "Active",
+		defaultCooldownSec = 11,
+	},
+	dodge_step_armorpassive = {
+		id = "dodge_step_armorpassive",
+		name = "Element Step",
+		desc = "On Dodge start: armor element status to enemies in 4 stud radius at dodge origin",
+		kind = "Passive",
+	},
+	quiet_step_armorpassive = {
+		id = "quiet_step_armorpassive",
+		name = "Quiet Step",
+		desc = "Dodge stamina cost −8%",
+		kind = "Passive",
+	},
 }
 
 function ArmorAbilityDefs.Get(abilityId: string): ArmorAbilityDef?
@@ -67,6 +110,23 @@ function ArmorAbilityDefs.HydrateAbilitySlot(slot: any): any
 	}
 	if def.kind == "Active" then
 		out.cooldownSec = slot.cooldownSec or def.defaultCooldownSec or 10
+	end
+	return out
+end
+
+function ArmorAbilityDefs.NormalizeAbilities(abilities: { any }?): { any }
+	local out: { any } = {}
+	if not abilities then
+		return out
+	end
+	for _, ab in abilities do
+		if type(ab) == "string" then
+			table.insert(out, ArmorAbilityDefs.AbilitySlot(ab))
+		elseif ab.slotType == "Passive" or ab.slotType == "Active" then
+			table.insert(out, ArmorAbilityDefs.HydrateAbilitySlot(ab))
+		else
+			table.insert(out, ab)
+		end
 	end
 	return out
 end

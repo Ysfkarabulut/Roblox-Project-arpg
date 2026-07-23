@@ -210,20 +210,8 @@ function InventoryService.GrantStarter(userId: number)
 		end
 	end
 
-	if not have["weapon_frame"] then
-		InventoryService.AddItem(userId, "weapon_frame")
-		have["weapon_frame"] = true
-	end
-
-	local offhandStarter = {
-		"o_kite",
-		"o_buckler",
-		"o_tower",
-		"o_round",
-		"o_spiked",
-		"o_quiver",
-		"o_knot",
-	}
+	-- Minimal off-hand options for stance tests
+	local offhandStarter = { "o_kite", "o_quiver", "o_knot" }
 	for _, defId in offhandStarter do
 		if not have[defId] then
 			InventoryService.AddItem(userId, defId)
@@ -231,47 +219,30 @@ function InventoryService.GrantStarter(userId: number)
 		end
 	end
 
-	local looseParts = {
-		"h_1h_sword",
-		"h_1h_axemace",
-		"h_1h_wandscepter",
-		"h_2h_sword",
-		"h_2h_axemace",
-		"h_2h_staff",
-		"h_2h_bow",
-		"h_2h_crossbow",
-		"p_heavy",
-		"p_balanced",
-		"p_lightweight",
-		"p_string_heavy",
-		"p_string_balanced",
-		"p_string_lightweight",
-		"gem_fire",
-		"gem_water",
-		"gem_lightning",
-		"gem_rock",
-		"gem_wind",
-		"gem_steel",
-		"gem_poison",
-		"gem_neutral",
-		-- ST common blade per family (assembly testing)
-		"b_dagger_st",
-		"b_sword_st",
-		"b_axe_st",
-		"b_mace_st",
-		"b_wand_st",
-		"b_scepter_st",
-		"b_greatblade_st",
-		"b_greataxe_st",
-		"b_greathammer_st",
-		"b_staff_st",
-		"b_bow_st",
-		"b_crossbow_st",
+	-- Steel tank armor set (playtest default)
+	local armorSet = {
+		"a_head_steel",
+		"a_chest_steel",
+		"a_hands_steel",
+		"a_feets_steel",
 	}
-	for _, defId in looseParts do
+	for _, defId in armorSet do
 		if not have[defId] then
 			InventoryService.AddItem(userId, defId)
+			have[defId] = true
 		end
+	end
+
+	-- One ready Sword frame for combat (no loose part spam — meshes come from Studio placeholders)
+	local hasCompleteFrame = false
+	for _, inst in ensureBag(userId) do
+		if inst.defId == "weapon_frame" and inst.parts and inst.parts.handle and inst.parts.blade and inst.parts.pommel then
+			hasCompleteFrame = true
+			break
+		end
+	end
+	if not hasCompleteFrame then
+		InventoryService.CreateAssembledFrame(userId, "h_1h_sword", "b_sword_st", "p_balanced", "gem_steel")
 	end
 end
 

@@ -8,12 +8,25 @@ Moduler ekipman tasarim kilidi.
 |--------|---------|-------|
 | `*_weaponpassive` | `PassiveDefs.luau` | `keen_weaponpassive` |
 | `*_weaponactive` | `WeaponActiveDefs.luau` | `strike_weaponactive` |
-| `*_armorpassive` | `ArmorAbilityDefs.luau` | (TBD) |
-| `*_armoractive` | `ArmorAbilityDefs.luau` | (TBD) |
+| `*_armorpassive` | `ArmorAbilityDefs.luau` | `carapace_armorpassive` |
+| `*_armoractive` | `ArmorAbilityDefs.luau` | `hand_touch_armoractive` |
 
 - **Catalog id** = mekanik (`strike_weaponactive`)
 - **Item `name`** = flavor ("Measured Thrust")
-- Combat params: `AbilityRuntime.luau` (weapon actives); armor runtime TBD
+- Combat params: `AbilityRuntime.luau` (weapon + armor actives)
+
+## Armor (v1)
+
+- **ArmorMatrix**: 32 pieces (8 element ï¿½ Head/Chest/Hands/Feets)
+- **Playtest set**: Steel tank ï¿½ `a_head_steel`, `a_chest_steel`, `a_hands_steel`, `a_feets_steel` (auto-granted + equipped)
+- Tank band (Rock/Steel/Neutral): high Def ï¿½ Mage band: high Res
+
+| Slot | Ability |
+|------|---------|
+| Chest | `carapace_armorpassive` (Neutral: `unbound_hide`) |
+| Head | `helm_pulse_armoractive` (Rock: `stone_focus`) |
+| Hands | `hand_touch_armoractive` |
+| Feets | `dodge_step_armorpassive` (Neutral: `quiet_step`) |
 
 Blade atama:
 ```lua
@@ -44,7 +57,7 @@ Generic gem-element actives: `strike_weaponactive`, `bolt_weaponactive`, `cone_w
 ## Katalog durumu
 
 - **BladeDefs**: 48 blade (12 aile x ST/AOE x Common/Rare)
-- **ArmorMatrix**: bos (yeniden tasarlanacak)
+- **ArmorMatrix**: 32 pieces (8 element x 4 slot); playtest = Steel set
 
 ### Blade matrisi (48)
 
@@ -64,8 +77,8 @@ Generic gem-element actives: `strike_weaponactive`, `bolt_weaponactive`, `cone_w
 | Crossbow | 2H_Crossbow | Head | `b_crossbow_st` | `b_crossbow_aoe` | `b_crossbow_st_r` | `b_crossbow_aoe_r` |
 
 Yetenek formu:
-- **ST**: melee `strike`/`dash`, ranged `bolt` · rare: `*_r` tier
-- **AOE**: `cone` · rare 2H: `cone_r` + `slam_r` (2A+1P)
-- **1H Rare**: 1A + 1P · **2H Rare**: 2A+1P veya 1A+2P
+- **ST**: melee `strike`/`dash`, ranged `bolt` ï¿½ rare: `*_r` tier
+- **AOE**: `cone` ï¿½ rare 2H: `cone_r` + `slam_r` (2A+1P)
+- **1H Rare**: 1A + 1P ï¿½ **2H Rare**: 2A+1P veya 1A+2P
 
 Kod: `PassiveDefs.luau`, `WeaponActiveDefs.luau`, `ArmorAbilityDefs.luau`, `BladeDefs.luau`, `AbilityRuntime.luau`

@@ -118,6 +118,28 @@ local SPECS: { [string]: AbilitySpec } = {
 		anim = "Melee",
 		vfx = "Dash",
 	},
+	-- Armor actives (ArmorAbilityDefs)
+	helm_pulse_armoractive = {
+		id = "helm_pulse_armoractive",
+		damagePct = 0,
+		range = 0,
+		shape = "Self",
+		cooldownSec = 14,
+		anim = "Buff",
+		vfx = "Aura",
+		selfBuff = "Fortify",
+		selfBuffDuration = 4,
+		selfBuffParams = { damageDealtMult = 1.08 },
+	},
+	hand_touch_armoractive = {
+		id = "hand_touch_armoractive",
+		damagePct = 120,
+		range = 6,
+		shape = "Single",
+		cooldownSec = 11,
+		anim = "Melee",
+		vfx = "Slash",
+	},
 }
 
 local function defaultFromElement(abilityId: string, element: string?, cooldownSec: number?): AbilitySpec
@@ -153,6 +175,19 @@ function AbilityRuntime.Get(abilityId: string, fallbackElement: string?, fallbac
 			local el = fallbackElement or "Neutral"
 			local out = table.clone(base)
 			out.statusId, out.statusDuration, out.statusDps = statusFromElement(el)
+			if fallbackCd then
+				out.cooldownSec = fallbackCd
+			end
+			return out
+		end
+	end
+
+	-- Armor touch inherits element from the armor piece
+	if abilityId == "hand_touch_armoractive" then
+		local base = SPECS[abilityId]
+		if base then
+			local out = table.clone(base)
+			out.statusId, out.statusDuration, out.statusDps = statusFromElement(fallbackElement or "Neutral")
 			if fallbackCd then
 				out.cooldownSec = fallbackCd
 			end

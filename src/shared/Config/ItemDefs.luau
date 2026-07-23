@@ -35,94 +35,12 @@ catalog.weapon_frame = {
 	kind = "WeaponFrame",
 	slotHints = { "main" },
 	element = nil,
-	desc = "Modular weapon â€” install Handle, Blade, Pommel; socket a Gem",
+	desc = "Modular weapon — install Handle, Blade, Pommel; socket a Gem",
 }
 
--- â”€â”€ Handcrafted overrides & exclusive pieces â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+-- Handcrafted off-hand / utility (weapons are modular via Handle/Blade/Pommel)
 
 local handcrafted = {
-	-- Legacy placeholders (UI / eski starter)
-	w_sword_1h = {
-		id = "w_sword_1h",
-		name = "Iron Longsword",
-		kind = "Weapon1H",
-		family = "Sword",
-		slotHints = { "main", "off" },
-		element = "Steel",
-		baseDamage = 40,
-		desc = "1H Sword Â· Measured Strike (legacy stub)",
-	},
-	w_axe_1h = {
-		id = "w_axe_1h",
-		name = "Hand Axe",
-		kind = "Weapon1H",
-		family = "Axe",
-		slotHints = { "main", "off" },
-		element = "Fire",
-		baseDamage = 46,
-		desc = "1H Axe Â· anti-guard (legacy stub)",
-	},
-	w_sword_2h = {
-		id = "w_sword_2h",
-		name = "Greatblade",
-		kind = "Weapon2H",
-		family = "Sword",
-		slotHints = { "main" },
-		element = "Steel",
-		baseDamage = 50,
-		desc = "2H Sword Â· off = Knot (legacy stub)",
-	},
-	w_bow = {
-		id = "w_bow",
-		name = "Hunter Bow",
-		kind = "Bow",
-		family = "Bow",
-		slotHints = { "main" },
-		element = "Wind",
-		baseDamage = 40,
-		desc = "Bow Â· Quiver off (legacy stub)",
-	},
-	w_crossbow = {
-		id = "w_crossbow",
-		name = "Siege Crossbow",
-		kind = "Crossbow",
-		family = "Crossbow",
-		slotHints = { "main" },
-		element = "Steel",
-		baseDamage = 58,
-		desc = "Crossbow Â· L3 reload (legacy stub)",
-	},
-	w_staff = {
-		id = "w_staff",
-		name = "Ember Staff",
-		kind = "Staff",
-		family = "Staff",
-		slotHints = { "main" },
-		element = "Fire",
-		baseDamage = 46,
-		desc = "2H Staff Â· Knot off (legacy stub)",
-	},
-	w_wand = {
-		id = "w_wand",
-		name = "Spark Wand",
-		kind = "Wand",
-		family = "Wand",
-		slotHints = { "main", "off" },
-		element = "Lightning",
-		baseDamage = 30,
-		desc = "1H Wand Â· kÄ±sa menzil (legacy stub)",
-	},
-	w_scepter = {
-		id = "w_scepter",
-		name = "Radiant Scepter",
-		kind = "Scepter",
-		family = "Scepter",
-		slotHints = { "main", "off" },
-		element = "Water",
-		baseDamage = 28,
-		desc = "1H Scepter Â· cone (legacy stub)",
-	},
-
 	-- Off-hand
 	o_kite = {
 		id = "o_kite",
@@ -131,7 +49,7 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Rock",
 		defence = 120,
-		desc = "Guard Â· chip 40% Â· drain 1.0/s",
+		desc = "Guard · chip 40% · drain 1.0/s",
 	},
 	o_buckler = {
 		id = "o_buckler",
@@ -140,7 +58,7 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Steel",
 		defence = 60,
-		desc = "Guard Â· chip 60% Â· drain 0.5/s Â· low slow",
+		desc = "Guard · chip 60% · drain 0.5/s · low slow",
 	},
 	o_tower = {
 		id = "o_tower",
@@ -149,7 +67,7 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Rock",
 		defence = 160,
-		desc = "Guard Â· chip 30% Â· drain 1.5/s Â· high slow",
+		desc = "Guard · chip 30% · drain 1.5/s · high slow",
 	},
 	o_round = {
 		id = "o_round",
@@ -158,7 +76,7 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Water",
 		defence = 90,
-		desc = "Guard Â· chip 45% Â· drain 0.8/s Â· balanced",
+		desc = "Guard · chip 45% · drain 0.8/s · balanced",
 	},
 	o_spiked = {
 		id = "o_spiked",
@@ -167,7 +85,7 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Steel",
 		defence = 100,
-		desc = "Guard Â· chip 50% Â· drain 1.1/s",
+		desc = "Guard · chip 50% · drain 1.1/s",
 	},
 	o_quiver = {
 		id = "o_quiver",
@@ -175,7 +93,7 @@ local handcrafted = {
 		kind = "Quiver",
 		slotHints = { "off" },
 		element = nil,
-		desc = "Bow/Crossbow off Â· tagsiz",
+		desc = "Bow/Crossbow off · untagged",
 	},
 	o_knot = {
 		id = "o_knot",
@@ -183,7 +101,7 @@ local handcrafted = {
 		kind = "Knot",
 		slotHints = { "off" },
 		element = nil,
-		desc = "2H / Staff off Â· tagsiz",
+		desc = "2H / Staff off · untagged",
 	},
 	o_focus = {
 		id = "o_focus",

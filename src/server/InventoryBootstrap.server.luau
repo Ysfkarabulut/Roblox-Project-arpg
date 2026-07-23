@@ -5,16 +5,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local InventoryService = require(script.Parent.Inventory.InventoryService)
-local LoadoutService = require(script.Parent.Inventory.LoadoutService)
-local WeaponAssemblyService = require(script.Parent.Inventory.WeaponAssemblyService)
-local HotbarService = require(script.Parent.Hotbar.HotbarService)
-local StatService = require(script.Parent.Combat.StatService)
-local PassiveService = require(script.Parent.Combat.PassiveService)
-local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
-local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
-local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
-
+-- Create remotes first so client GearUI never hangs if a require below errors.
+local existing = ReplicatedStorage:FindFirstChild("InventoryRemotes")
+if existing then
+	existing:Destroy()
+end
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "InventoryRemotes"
 remotesFolder.Parent = ReplicatedStorage
@@ -45,6 +40,16 @@ local RemoveWeaponPart = remoteEvent("RemoveWeaponPart")
 local SocketGem = remoteEvent("SocketGem")
 local UnsocketGem = remoteEvent("UnsocketGem")
 local CreateWeaponFrame = remoteEvent("CreateWeaponFrame")
+
+local InventoryService = require(script.Parent.Inventory.InventoryService)
+local LoadoutService = require(script.Parent.Inventory.LoadoutService)
+local WeaponAssemblyService = require(script.Parent.Inventory.WeaponAssemblyService)
+local HotbarService = require(script.Parent.Hotbar.HotbarService)
+local StatService = require(script.Parent.Combat.StatService)
+local PassiveService = require(script.Parent.Combat.PassiveService)
+local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
+local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
+local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 
 local function resolveStance(userId: number): string
 	local loadout = LoadoutService.Get(userId)
@@ -229,6 +234,8 @@ Players.PlayerAdded:Connect(function(player)
 		end
 		local userId = player.UserId
 		local lo = LoadoutService.Get(userId)
+
+		-- Equip first complete WeaponFrame into main if empty
 		if not lo.main then
 			for _, item in InventoryService.GetItems(userId) do
 				if item.defId == "weapon_frame" and item.parts and item.parts.handle and item.parts.blade and item.parts.pommel then
@@ -238,6 +245,24 @@ Players.PlayerAdded:Connect(function(player)
 				end
 			end
 		end
+
+		-- Equip Steel tank set into empty armor slots (playtest default)
+		local ArmorMatrix = require(game.ReplicatedStorage.Shared.Config.ArmorMatrix)
+		local armorSlots = { "head", "chest", "hands", "feets" }
+		for _, slotId in armorSlots do
+			local loNow = LoadoutService.Get(userId)
+			if not (loNow :: any)[slotId] then
+				local wantDef = ArmorMatrix.TestSetIds[slotId]
+				for _, item in InventoryService.GetItems(userId) do
+					if item.defId == wantDef then
+						LoadoutService.Equip(userId, item.uuid, slotId)
+						break
+					end
+				end
+			end
+		end
+
+		HotbarService.AutoFill(userId)
 		push(player)
 	end)
 end)

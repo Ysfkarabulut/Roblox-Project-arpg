@@ -8,16 +8,92 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
-local LoadoutSlots = require(ReplicatedStorage.Shared.Config.LoadoutSlots)
-local HotbarConfig = require(ReplicatedStorage.Shared.Config.HotbarConfig)
-local CombatConfig = require(ReplicatedStorage.Shared.Config.CombatConfig)
-local ItemIcon = require(script.Parent.ItemIcon)
-
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local remotes = ReplicatedStorage:WaitForChild("InventoryRemotes")
+local COL_BG = Color3.fromRGB(18, 20, 24)
+local COL_PANEL = Color3.fromRGB(28, 30, 36)
+local COL_SLOT = Color3.fromRGB(42, 44, 52)
+local COL_SLOT_EQ = Color3.fromRGB(48, 66, 54)
+local COL_SLOT_SEL = Color3.fromRGB(52, 72, 96)
+local COL_STROKE = Color3.fromRGB(70, 74, 84)
+local COL_TEXT = Color3.fromRGB(235, 236, 240)
+local COL_MUTED = Color3.fromRGB(140, 146, 158)
+local COL_DANGER = Color3.fromRGB(220, 80, 80)
+
+local function corner(parent: Instance, r: number?)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, r or 8)
+	c.Parent = parent
+end
+
+local function stroke(parent: Instance, color: Color3?, t: number?)
+	local s = Instance.new("UIStroke")
+	s.Color = color or COL_STROKE
+	s.Thickness = t or 1
+	s.Parent = parent
+end
+
+-- Early ScreenGui: show boot error instead of blank HUD if remotes/require fail.
+local gui = Instance.new("ScreenGui")
+gui.Name = "GearUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 10
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = playerGui
+
+local bootStatus = Instance.new("TextLabel")
+bootStatus.Name = "BootStatus"
+bootStatus.Size = UDim2.fromOffset(420, 28)
+bootStatus.Position = UDim2.new(0.5, -210, 1, -200)
+bootStatus.BackgroundTransparency = 1
+bootStatus.Font = Enum.Font.Gotham
+bootStatus.TextSize = 12
+bootStatus.TextColor3 = COL_MUTED
+bootStatus.Text = "Loading inventory…"
+bootStatus.ZIndex = 50
+bootStatus.Parent = gui
+
+local function failBoot(msg: string)
+	bootStatus.Text = msg
+	bootStatus.TextColor3 = COL_DANGER
+	warn("[GearUI]", msg)
+end
+
+local okDefs, ItemDefsOrErr = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.ItemDefs)
+end)
+if not okDefs then
+	failBoot("ItemDefs require failed — check Output")
+	return
+end
+local ItemDefs = ItemDefsOrErr
+
+local okSlots, LoadoutSlots = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.LoadoutSlots)
+end)
+local okHotbar, HotbarConfig = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.HotbarConfig)
+end)
+local okCombat, CombatConfig = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.CombatConfig)
+end)
+local okIcon, ItemIcon = pcall(function()
+	return require(script.Parent.ItemIcon)
+end)
+if not (okSlots and okHotbar and okCombat and okIcon) then
+	failBoot("GearUI config require failed — check Output")
+	return
+end
+
+local remotes = ReplicatedStorage:WaitForChild("InventoryRemotes", 30)
+if not remotes then
+	failBoot("InventoryRemotes missing — Rojo sync / InventoryBootstrap failed")
+	return
+end
+bootStatus:Destroy()
+
 local GetSnapshot = remotes:WaitForChild("GetSnapshot") :: RemoteFunction
 local EquipItem = remotes:WaitForChild("EquipItem") :: RemoteEvent
 local UnequipSlot = remotes:WaitForChild("UnequipSlot") :: RemoteEvent
@@ -60,42 +136,12 @@ local selectedUuid: string? = nil
 local selectedAbility: string? = nil
 local open = false
 
-local COL_BG = Color3.fromRGB(18, 20, 24)
-local COL_PANEL = Color3.fromRGB(28, 30, 36)
-local COL_SLOT = Color3.fromRGB(42, 44, 52)
-local COL_SLOT_EQ = Color3.fromRGB(48, 66, 54)
-local COL_SLOT_SEL = Color3.fromRGB(52, 72, 96)
-local COL_STROKE = Color3.fromRGB(70, 74, 84)
-local COL_TEXT = Color3.fromRGB(235, 236, 240)
-local COL_MUTED = Color3.fromRGB(140, 146, 158)
-
 local PRIMARY_COLORS = {
 	STR = Color3.fromRGB(230, 90, 90),
 	DEX = Color3.fromRGB(90, 200, 120),
 	VIT = Color3.fromRGB(90, 170, 255),
 	INT = Color3.fromRGB(200, 130, 255),
 }
-
-local function corner(parent: Instance, r: number?)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 8)
-	c.Parent = parent
-end
-
-local function stroke(parent: Instance, color: Color3?, t: number?)
-	local s = Instance.new("UIStroke")
-	s.Color = color or COL_STROKE
-	s.Thickness = t or 1
-	s.Parent = parent
-end
-
-local gui = Instance.new("ScreenGui")
-gui.Name = "GearUI"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 10
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.Parent = playerGui
 
 -- Confirm modal (gem unsocket etc.)
 local confirmOverlay = Instance.new("Frame")

@@ -144,9 +144,12 @@ function WeaponAssemblyService.SocketGem(userId: number, frameUuid: string, gemU
 		return false, "GemInUse"
 	end
 
-	-- Destroy existing gem
+	-- Return existing gem to bag (do not destroy)
 	if frame.gemUuid then
-		InventoryService.RemoveItem(userId, frame.gemUuid)
+		local oldGem = InventoryService.FindRaw(userId, frame.gemUuid)
+		if oldGem then
+			oldGem.installedIn = nil
+		end
 		frame.gemUuid = nil
 	end
 
@@ -163,7 +166,10 @@ function WeaponAssemblyService.UnsocketGem(userId: number, frameUuid: string): (
 	if not frame.gemUuid then
 		return false, "NoGem"
 	end
-	InventoryService.RemoveItem(userId, frame.gemUuid)
+	local gemInst = InventoryService.FindRaw(userId, frame.gemUuid)
+	if gemInst then
+		gemInst.installedIn = nil
+	end
 	frame.gemUuid = nil
 	return true, nil
 end

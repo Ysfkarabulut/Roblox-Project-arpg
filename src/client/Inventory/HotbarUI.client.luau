@@ -15,13 +15,21 @@ local HotbarConfig = require(ReplicatedStorage.Shared.Config.HotbarConfig)
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local remotes = ReplicatedStorage:WaitForChild("InventoryRemotes")
+local remotes = ReplicatedStorage:WaitForChild("InventoryRemotes", 30)
+if not remotes then
+	warn("[HotbarUI] InventoryRemotes missing — Rojo sync / InventoryBootstrap failed")
+	return
+end
 local GetSnapshot = remotes:WaitForChild("GetSnapshot") :: RemoteFunction
 local BindAbility = remotes:WaitForChild("BindAbility") :: RemoteEvent
 local UnbindHotbar = remotes:WaitForChild("UnbindHotbar") :: RemoteEvent
 local InventoryUpdated = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 
-local combatRemotes = ReplicatedStorage:WaitForChild("CombatRemotes")
+local combatRemotes = ReplicatedStorage:WaitForChild("CombatRemotes", 30)
+if not combatRemotes then
+	warn("[HotbarUI] CombatRemotes missing")
+	return
+end
 local CombatNotify = combatRemotes:WaitForChild("CombatNotify") :: RemoteEvent
 
 type ActiveInfo = { abilityId: string, name: string, desc: string, sourceUuid: string, defId: string }
