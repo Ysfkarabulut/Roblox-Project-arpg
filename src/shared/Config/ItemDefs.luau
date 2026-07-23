@@ -1,13 +1,19 @@
-﻿--[[
+--[[
 	Item catalog = modular weapon parts + ArmorMatrix + handcrafted overrides.
 	Legacy w_* weapons are converted to WeaponFrame at runtime (see LegacyWeaponConverter).
 ]]
 
 local ArmorMatrix = require(script.Parent.ArmorMatrix)
+local BossContent = require(script.Parent.BossContent)
+local RareArmorDefs = require(script.Parent.RareArmorDefs)
+local RoleArmorDefs = require(script.Parent.RoleArmorDefs)
+local ArmorAbilityDefs = require(script.Parent.ArmorAbilityDefs)
+local FocusDefs = require(script.Parent.FocusDefs)
 local HandleDefs = require(script.Parent.HandleDefs)
 local BladeDefs = require(script.Parent.BladeDefs)
 local PommelDefs = require(script.Parent.PommelDefs)
 local GemDefs = require(script.Parent.GemDefs)
+local LootBoxDefs = require(script.Parent.LootBoxDefs)
 
 local ItemDefs = {}
 
@@ -28,6 +34,21 @@ end
 for id, def in ArmorMatrix.Build() do
 	catalog[id] = def
 end
+for id, def in BossContent.Build() do
+	catalog[id] = def
+end
+for id, def in RareArmorDefs.Build() do
+	catalog[id] = def
+end
+for id, def in RoleArmorDefs.Build() do
+	catalog[id] = def
+end
+for id, def in FocusDefs.Build() do
+	catalog[id] = def
+end
+for id, def in LootBoxDefs.Build() do
+	catalog[id] = def
+end
 
 catalog.weapon_frame = {
 	id = "weapon_frame",
@@ -42,15 +63,6 @@ catalog.weapon_frame = {
 
 local handcrafted = {
 	-- Off-hand
-	o_kite = {
-		id = "o_kite",
-		name = "Kite Shield",
-		kind = "Shield",
-		slotHints = { "off" },
-		element = "Rock",
-		defence = 120,
-		desc = "Guard · chip 40% · drain 1.0/s",
-	},
 	o_buckler = {
 		id = "o_buckler",
 		name = "Buckler",
@@ -58,7 +70,18 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Steel",
 		defence = 60,
-		desc = "Guard · chip 60% · drain 0.5/s · low slow",
+		abilities = ArmorAbilityDefs.NormalizeAbilities({ "riposte_bash_armoractive" }),
+		desc = "Light shield · Riposte Bash · chip 60% · drain 0.5/s",
+	},
+	o_kite = {
+		id = "o_kite",
+		name = "Kite Shield",
+		kind = "Shield",
+		slotHints = { "off" },
+		element = "Rock",
+		defence = 120,
+		abilities = ArmorAbilityDefs.NormalizeAbilities({ "shield_ram_armoractive" }),
+		desc = "Balanced shield · Shield Ram · chip 40% · drain 1.0/s",
 	},
 	o_tower = {
 		id = "o_tower",
@@ -67,7 +90,8 @@ local handcrafted = {
 		slotHints = { "off" },
 		element = "Rock",
 		defence = 160,
-		desc = "Guard · chip 30% · drain 1.5/s · high slow",
+		abilities = ArmorAbilityDefs.NormalizeAbilities({ "bulwark_wall_armoractive" }),
+		desc = "Heavy shield · Bulwark Fortify · chip 30% · drain 1.5/s",
 	},
 	o_round = {
 		id = "o_round",
@@ -135,6 +159,9 @@ function ItemDefs.CanEquipInSlot(defId: string, slotId: string): boolean
 	if def.kind == "WeaponHandle" or def.kind == "WeaponBlade" or def.kind == "WeaponPommel" or def.kind == "ElementGem" then
 		return false
 	end
+	if def.kind == "LootBox" then
+		return false
+	end
 	for _, s in def.slotHints do
 		if s == slotId then
 			return true
@@ -147,12 +174,50 @@ function ItemDefs.IsPartKind(kind: string?): boolean
 	return kind == "WeaponHandle" or kind == "WeaponBlade" or kind == "WeaponPommel" or kind == "ElementGem"
 end
 
---- Common + Rare (Studio starter); BossExclusive dÄ±ÅŸarÄ±da
+--- Items that may appear in Gacha Box (never BossExclusive / frames / off-hand utility).
+function ItemDefs.LootEligible(def: any): boolean
+	if not def or typeof(def) ~= "table" then
+		return false
+	end
+	if def.rarity == "BossExclusive" then
+		return false
+	end
+	if def.id == "weapon_frame" then
+		return false
+	end
+	local kind = def.kind
+	if kind == "WeaponHandle" or kind == "WeaponBlade" or kind == "WeaponPommel" or kind == "ElementGem" then
+		return true
+	end
+	if kind == "Head" or kind == "Chest" or kind == "Hands" or kind == "Feets" then
+		return def.rarity == "Rare"
+	end
+	if kind == "Focus" then
+		return def.rarity == "Rare"
+	end
+	return false
+end
+
+function ItemDefs.IsLootBox(def: any): boolean
+	return def ~= nil and def.kind == "LootBox"
+end
+
+function ItemDefs.IsTradeable(def: any): boolean
+	if not def or typeof(def) ~= "table" then
+		return false
+	end
+	if def.kind == "LootBox" then
+		return def.tradeable ~= false
+	end
+	return def.tradeable == true
+end
+
+--- Common + Rare (Studio starter); BossExclusive dışarıda
 function ItemDefs.StarterDefIds(): { string }
 	local ids = {}
 	for id, def in catalog do
 		local r = def.rarity
-		if r ~= "BossExclusive" then
+		if r ~= "BossExclusive" and def.kind ~= "LootBox" then
 			table.insert(ids, id)
 		end
 	end

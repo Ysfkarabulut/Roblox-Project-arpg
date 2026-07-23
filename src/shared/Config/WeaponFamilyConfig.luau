@@ -158,6 +158,38 @@ function WeaponFamilyConfig.L3PerkMult(def: any, step: number): number
 	return info.l3Perk(def and def.kind, is2H)
 end
 
+--- English tooltip lines for family LA perks (COMBAT_STAT_SHEET §11.6)
+function WeaponFamilyConfig.LaPerkLines(def: any): { string }
+	if not def or not def.family then
+		return {}
+	end
+	local fam = def.family
+	local is2H = def.kind == "Weapon2H"
+	local lines: { string } = {}
+	if fam == "Sword" then
+		table.insert(lines, `L3 Measured Strike: ×{if is2H then CombatConfig.MeasuredStrike2H else CombatConfig.MeasuredStrike1H} damage (stacks with global L3 ×{CombatConfig.ComboL3})`)
+	elseif fam == "Wand" then
+		table.insert(lines, `L3 Arc Bolt: ×{CombatConfig.ArcBoltL3} damage`)
+	elseif fam == "Staff" then
+		table.insert(lines, `L3 Empowered Bolt: ×{CombatConfig.EmpoweredBoltL3} damage`)
+	elseif fam == "Bow" then
+		table.insert(lines, `L3 Focused Shot: ×{CombatConfig.FocusedShotL3} damage`)
+	elseif fam == "Crossbow" then
+		table.insert(lines, `L3: ×{CombatConfig.CrossbowL3} damage · then {CombatConfig.CrossbowReloadSec}s reload`)
+	elseif fam == "Scepter" then
+		table.insert(lines, `L3 Radiant Sweep: ×{CombatConfig.RadiantSweepL3} damage · cone +{CombatConfig.ScepterL3ConeBonusDeg}°`)
+	elseif fam == "Dagger" then
+		table.insert(lines, `Backstab (rear 180°): ×{CombatConfig.KBackstab} damage`)
+	elseif fam == "Axe" then
+		table.insert(lines, `Anti-guard: ×{CombatConfig.AxeGuardStamMult} stamina damage vs Guard/Parry`)
+	elseif fam == "Mace" then
+		local shred = if is2H then CombatConfig.MaceShred2H else CombatConfig.MaceShred1H
+		table.insert(lines, `Defence Shred: victim effective DR −{shred}%`)
+	end
+	table.insert(lines, `Combo: L2 ×{CombatConfig.ComboL2} · L3 ×{CombatConfig.ComboL3} (all weapons)`)
+	return lines
+end
+
 --- Effective attack speed mult including pommel (modular weapons)
 function WeaponFamilyConfig.AttackSpeedMult(def: any, dex: number): number
 	local tier = def and def.asTier or "B"

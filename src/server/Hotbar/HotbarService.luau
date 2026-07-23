@@ -162,8 +162,16 @@ function HotbarService.GetAbilityInSlot(userId: number, slotIndex: number): stri
 	return ensure(userId)[slotIndex]
 end
 
-Players.PlayerRemoving:Connect(function(player)
-	bindsByUser[player.UserId] = nil
-end)
+function HotbarService.ImportBinds(userId: number, binds: HotbarBinds)
+	local b = emptyBinds()
+	for i = 1, HotbarConfig.SlotCount do
+		b[i] = binds[i]
+	end
+	bindsByUser[userId] = b
+end
+
+function HotbarService.Clear(userId: number)
+	bindsByUser[userId] = nil
+end
 
 return HotbarService

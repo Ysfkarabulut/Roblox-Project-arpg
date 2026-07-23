@@ -1,6 +1,6 @@
 --[[
-	Global weapon passive catalog — stable `*_weaponpassive` ids only.
-	Blades reference by id string; optional flavor name in AbilitySlot().
+	Global passive catalog — shared ids across weapons, armor, and focus.
+	Stable suffixes: `*_weaponpassive`, `*_armorpassive`, `lifesteal_passive`, etc.
 ]]
 
 local PassiveDefs = {}
@@ -17,6 +17,7 @@ export type PassiveDef = {
 	buffPotencyFlat: number?,
 	directMult: number?,
 	laProcChance: number?,
+	lifestealPct: number?,
 }
 
 local CATALOG: { [string]: PassiveDef } = {
@@ -48,6 +49,20 @@ local CATALOG: { [string]: PassiveDef } = {
 		category = "Stat",
 		directMult = 1.03,
 	},
+	buff_weaponpassive = {
+		id = "buff_weaponpassive",
+		name = "Buff",
+		desc = "+10 Buff Potency (flat)",
+		category = "Stat",
+		buffPotencyFlat = 10,
+	},
+	lifesteal_passive = {
+		id = "lifesteal_passive",
+		name = "Lifesteal",
+		desc = "Heal 5% of direct damage dealt (LA + abilities)",
+		category = "Proc",
+		lifestealPct = 0.05,
+	},
 }
 
 function PassiveDefs.Get(abilityId: string): PassiveDef?
@@ -74,6 +89,14 @@ function PassiveDefs.LaProcChance(abilityId: string): number?
 	local def = PassiveDefs.Get(abilityId)
 	if def and def.category == "Proc" then
 		return def.laProcChance
+	end
+	return nil
+end
+
+function PassiveDefs.LifestealPct(abilityId: string): number?
+	local def = PassiveDefs.Get(abilityId)
+	if def and def.lifestealPct then
+		return def.lifestealPct
 	end
 	return nil
 end

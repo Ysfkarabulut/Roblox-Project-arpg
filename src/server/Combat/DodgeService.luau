@@ -2,15 +2,65 @@
 	Dodge — stamina + i-frames + smooth horizontal dash.
 ]]
 
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local StaminaService = require(script.Parent.StaminaService)
 local StatusService = require(script.Parent.StatusService)
+local PassiveService = require(script.Parent.PassiveService)
+local CombatPressureService = require(script.Parent.CombatPressureService)
 
 local DodgeService = {}
 
 local recoveryUntil: { [number]: number } = {}
 local dashTokens: { [number]: number } = {}
+
+local function dodgeCost(userId: number): number
+	if PassiveService.HasPassive(userId, "quiet_step_armorpassive") then
+		return CombatConfig.DodgeCost * 0.92
+	end
+	return CombatConfig.DodgeCost
+end
+
+local function applyDodgeStep(userId: number, origin: Vector3)
+	if not PassiveService.HasPassive(userId, "dodge_step_armorpassive") then
+		return
+	end
+	local element = PassiveService.GetSlotElement(userId, "feets")
+	if not element or element == "Neutral" then
+		return
+	end
+	local status = PassiveService.ElementStatus(element)
+	if not status then
+		return
+	end
+	local scaled = PassiveService.ScaleOnHitStatus(userId, status)
+
+	local function tryApply(model: Model)
+		local pp = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+		if not pp or not pp:IsA("BasePart") then
+			return
+		end
+		if (pp.Position - origin).Magnitude > 4 then
+			return
+		end
+		StatusService.Apply(model, scaled.id, scaled.duration, {
+			sourceUserId = userId,
+			dps = scaled.dps,
+		})
+	end
+
+	local dummy = Workspace:FindFirstChild("TrainingDummy")
+	if dummy and dummy:IsA("Model") then
+		tryApply(dummy)
+	end
+	for _, plr in Players:GetPlayers() do
+		if plr.UserId ~= userId and plr.Character then
+			tryApply(plr.Character)
+		end
+	end
+end
 
 function DodgeService.Can(userId: number): boolean
 	return os.clock() >= (recoveryUntil[userId] or 0)
@@ -39,12 +89,15 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 	if not DodgeService.Can(userId) then
 		return false, "Recovery"
 	end
-	if not StaminaService.Spend(userId, CombatConfig.DodgeCost) then
+	local char = player.Character
+	if not char or not CombatPressureService.CanMoveEntity(char) or not CombatPressureService.CanAttackEntity(char) then
+		return false, "Stunned"
+	end
+	if not StaminaService.Spend(userId, dodgeCost(userId)) then
 		return false, "NoStamina"
 	end
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hum = char:FindFirstChildOfClass("Humanoid")
 	if not hrp or not hum then
 		return false, "NoChar"
 	end
@@ -54,6 +107,15 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 		params = { iframesActive = true },
 		silentBatch = true,
 	})
+
+	applyDodgeStep(userId, hrp.Position)
+
+	if PassiveService.HasPassive(userId, "ward_step_armorpassive") then
+		StatusService.Apply(char, "Regen", 3, {
+			sourceUserId = userId,
+			hps = 5,
+		})
+	end
 
 	local dir = moveDir
 	if not dir or dir.Magnitude < 0.1 then

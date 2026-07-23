@@ -13,6 +13,9 @@ local HotbarConfig = require(ReplicatedStorage.Shared.Config.HotbarConfig)
 local CombatConfig = require(ReplicatedStorage.Shared.Config.CombatConfig)
 local CombatAnim = require(script.Parent.CombatAnim)
 local CombatVfx = require(script.Parent.CombatVfx)
+local CombatHitStop = require(script.Parent.CombatHitStop)
+local UiTheme = require(script.Parent.Parent.UI.UiTheme)
+local C = UiTheme.Colors
 
 local player = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
@@ -38,47 +41,39 @@ local shiftLock = true
 -- Server-authoritative defend stance (guard OR parry). Do not set locally on RMB.
 local defending = false
 local rmbHeld = false
+local reloadUntil = 0
 
 local SHIFT_LOCK_OFFSET = CombatConfig.ShiftLockCameraOffset or Vector3.new(1.75, 0, 0)
 
 -- Stamina HUD
-local gui = Instance.new("ScreenGui")
-gui.Name = "CombatHud"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 6
-gui.IgnoreGuiInset = true
+local gui = UiTheme.ScreenGui({
+	name = "CombatHud",
+	displayOrder = UiTheme.DisplayOrder.Hud + 1,
+})
 gui.Parent = playerGui
 
 local stamBarBg = Instance.new("Frame")
 stamBarBg.Size = UDim2.fromOffset(220, 14)
 stamBarBg.Position = UDim2.new(0.5, -110, 1, -200)
-stamBarBg.BackgroundColor3 = Color3.fromRGB(30, 32, 38)
+stamBarBg.BackgroundColor3 = C.HudTrack
 stamBarBg.BorderSizePixel = 0
 stamBarBg.Parent = gui
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 4)
-	c.Parent = stamBarBg
-end
+UiTheme.Corner(stamBarBg, UiTheme.Radius.Xs)
 local stamFill = Instance.new("Frame")
 stamFill.Size = UDim2.fromScale(1, 1)
-stamFill.BackgroundColor3 = Color3.fromRGB(90, 180, 120)
+stamFill.BackgroundColor3 = C.Stamina
 stamFill.BorderSizePixel = 0
 stamFill.Parent = stamBarBg
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 4)
-	c.Parent = stamFill
-end
-local aimLabel = Instance.new("TextLabel")
-aimLabel.Size = UDim2.fromOffset(160, 18)
-aimLabel.Position = UDim2.new(0.5, -80, 1, -222)
-aimLabel.BackgroundTransparency = 1
-aimLabel.Font = Enum.Font.Gotham
-aimLabel.TextSize = 11
-aimLabel.TextColor3 = Color3.fromRGB(120, 220, 140)
-aimLabel.Text = "ShiftLock ON (F4)"
-aimLabel.Parent = gui
+UiTheme.Corner(stamFill, UiTheme.Radius.Xs)
+local aimLabel = UiTheme.Label({
+	parent = gui,
+	size = UDim2.fromOffset(160, 18),
+	position = UDim2.new(0.5, -80, 1, -222),
+	text = "ShiftLock ON (F4)",
+	textSize = UiTheme.TextSize.Caption,
+	color = C.AimOn,
+	xAlign = Enum.TextXAlignment.Center,
+})
 
 local function refreshHotbar(snap: any)
 	if typeof(snap) == "table" and typeof(snap.hotbar) == "table" then
@@ -115,7 +110,7 @@ local function applyShiftLockState()
 			hum.CameraOffset = SHIFT_LOCK_OFFSET
 		end
 		aimLabel.Text = "ShiftLock ON (F4)"
-		aimLabel.TextColor3 = Color3.fromRGB(120, 220, 140)
+		aimLabel.TextColor3 = C.AimOn
 	else
 		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 		UserInputService.MouseIconEnabled = true
@@ -124,7 +119,7 @@ local function applyShiftLockState()
 			hum.CameraOffset = Vector3.zero
 		end
 		aimLabel.Text = "ShiftLock OFF (F4)"
-		aimLabel.TextColor3 = Color3.fromRGB(160, 170, 180)
+		aimLabel.TextColor3 = C.AimOff
 	end
 end
 
@@ -175,12 +170,19 @@ local function tryCastSlot(slotIndex: number)
 	if (cdUntil[abilityId] or 0) > os.clock() then
 		return
 	end
+	if isReloading() then
+		return
+	end
 	local look, aim = aimPayload()
 	CastAbility:FireServer(abilityId, look, aim)
 end
 
+local function isReloading(): boolean
+	return os.clock() < reloadUntil
+end
+
 local function doLightAttack()
-	if defending then
+	if defending or isReloading() then
 		return
 	end
 	local look, aim = aimPayload()
@@ -266,8 +268,23 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 	if userId == player.UserId then
 		local animKey = fx.anim or "Melee"
 		CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
+		if typeof(fx.recoverySec) == "number" and fx.recoverySec > 0 and player.Character then
+			local char = player.Character
+			local comboMult = if typeof(fx.comboMoveMult) == "number" then fx.comboMoveMult else 1
+			char:SetAttribute("ComboMoveMult", comboMult)
+			task.delay(fx.recoverySec, function()
+				if char.Parent then
+					char:SetAttribute("ComboMoveMult", 1)
+				end
+			end)
+		end
+		if typeof(fx.reloadSec) == "number" and fx.reloadSec > 0 then
+			reloadUntil = os.clock() + fx.reloadSec
+			CombatAnim.PlayReload(fx.reloadSec)
+		end
 	end
 	CombatVfx.Play(fx)
+	CombatHitStop.TryOnFx(userId, fx, _hits)
 end)
 
 ReactionFx.OnClientEvent:Connect(function(reactionId: string, pos: Vector3)
@@ -313,7 +330,25 @@ CombatNotify.OnClientEvent:Connect(function(result: any)
 	elseif result.ok and result.whiff then
 		print("[Combat] whiff L" .. tostring(result.comboStep))
 	elseif not result.ok and result.reason then
+		if result.reason == "Reloading" then
+			aimLabel.Text = "RELOADING"
+		end
 		print("[Combat] fail:", result.reason)
+	end
+	if result.ok and typeof(result.reloadSec) == "number" and result.reloadSec > 0 then
+		reloadUntil = os.clock() + result.reloadSec
+		CombatAnim.PlayReload(result.reloadSec)
+	end
+end)
+
+RunService.Heartbeat:Connect(function()
+	if isReloading() then
+		local left = reloadUntil - os.clock()
+		aimLabel.Text = string.format("RELOAD %.1fs", math.max(0, left))
+	elseif shiftLock then
+		aimLabel.Text = "ShiftLock ON (F4)"
+	else
+		aimLabel.Text = "ShiftLock OFF (F4)"
 	end
 end)
 
@@ -325,11 +360,11 @@ StaminaUpdate.OnClientEvent:Connect(function(payload: any)
 	local max = math.max(1, payload.max or 1)
 	stamFill.Size = UDim2.fromScale(math.clamp(cur / max, 0, 1), 1)
 	if payload.guarding then
-		stamFill.BackgroundColor3 = Color3.fromRGB(100, 140, 220)
+		stamFill.BackgroundColor3 = C.StaminaGuard
 	elseif payload.parrying then
-		stamFill.BackgroundColor3 = Color3.fromRGB(200, 170, 80)
+		stamFill.BackgroundColor3 = C.StaminaParry
 	else
-		stamFill.BackgroundColor3 = Color3.fromRGB(90, 180, 120)
+		stamFill.BackgroundColor3 = C.Stamina
 	end
 end)
 

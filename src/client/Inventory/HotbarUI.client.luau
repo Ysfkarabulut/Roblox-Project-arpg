@@ -11,6 +11,10 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local HotbarConfig = require(ReplicatedStorage.Shared.Config.HotbarConfig)
+local AbilityTooltip = require(ReplicatedStorage.Shared.UI.AbilityTooltip)
+local HoverTooltip = require(script.Parent.Parent.UI.HoverTooltip)
+local UiTheme = require(script.Parent.Parent.UI.UiTheme)
+local C = UiTheme.Colors
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -44,83 +48,71 @@ local cdDuration: { [string]: number } = {}
 local draggingId: string? = nil
 local dragGhost: TextLabel? = nil
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "HotbarUI"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 5
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local gui = UiTheme.ScreenGui({
+	name = "HotbarUI",
+	displayOrder = UiTheme.DisplayOrder.Hud,
+	zIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
 gui.Parent = playerGui
 
--- Ability pool (loadout ile birlikte; H ile de açılır)
+local pool = UiTheme.Panel({
+	parent = gui,
+	name = "AbilityPool",
+	size = UDim2.fromOffset(320, 220),
+	position = UDim2.new(0.5, -160, 1, -400),
+	visible = false,
+	bg = C.BgElevated,
+	radius = UiTheme.Radius.Md,
+})
+
 local poolOpen = false
-local pool = Instance.new("Frame")
-pool.Name = "AbilityPool"
-pool.Size = UDim2.fromOffset(320, 220)
-pool.Position = UDim2.new(0.5, -160, 1, -400)
-pool.BackgroundColor3 = Color3.fromRGB(22, 24, 28)
-pool.BorderSizePixel = 0
-pool.Visible = false
-pool.Parent = gui
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 8)
-	c.Parent = pool
-end
 
-local poolTitle = Instance.new("TextLabel")
-poolTitle.Size = UDim2.new(1, -12, 0, 24)
-poolTitle.Position = UDim2.fromOffset(8, 4)
-poolTitle.BackgroundTransparency = 1
-poolTitle.Font = Enum.Font.GothamBold
-poolTitle.TextSize = 14
-poolTitle.TextColor3 = Color3.fromRGB(230, 230, 235)
-poolTitle.TextXAlignment = Enum.TextXAlignment.Left
-poolTitle.Text = "Actives (H) — or bind in Equipment (I)"
-poolTitle.Parent = pool
+local poolTitle = UiTheme.Label({
+	parent = pool,
+	text = "Actives (H) — or bind in Equipment (I)",
+	size = UDim2.new(1, -12, 0, 24),
+	position = UDim2.fromOffset(8, 4),
+	font = UiTheme.Font.Title,
+	textSize = UiTheme.TextSize.Title,
+	color = C.Text,
+})
 
-local poolScroll = Instance.new("ScrollingFrame")
-poolScroll.Size = UDim2.new(1, -12, 1, -36)
-poolScroll.Position = UDim2.fromOffset(6, 30)
-poolScroll.BackgroundTransparency = 1
-poolScroll.BorderSizePixel = 0
-poolScroll.ScrollBarThickness = 4
-poolScroll.CanvasSize = UDim2.fromOffset(0, 0)
-poolScroll.Parent = pool
+local poolScroll = UiTheme.ScrollFrame({
+	parent = pool,
+	size = UDim2.new(1, -12, 1, -36),
+	position = UDim2.fromOffset(6, 30),
+})
 
 local poolList = Instance.new("UIListLayout")
 poolList.Padding = UDim.new(0, 4)
 poolList.Parent = poolScroll
 
 -- Hotbar bar
-local bar = Instance.new("Frame")
-bar.Name = "Hotbar"
-bar.Size = UDim2.fromOffset(6 * 56 + 20, 64)
-bar.Position = UDim2.new(0.5, -(6 * 56 + 20) / 2, 1, -84)
-bar.BackgroundColor3 = Color3.fromRGB(22, 24, 28)
-bar.BorderSizePixel = 0
-bar.Parent = gui
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 8)
-	c.Parent = bar
-end
+local bar = UiTheme.Panel({
+	parent = gui,
+	name = "Hotbar",
+	size = UDim2.fromOffset(6 * 56 + 20, 64),
+	position = UDim2.new(0.5, -(6 * 56 + 20) / 2, 1, -84),
+	bg = C.BgElevated,
+	radius = UiTheme.Radius.Md,
+})
 
 local slotButtons: { [number]: TextButton } = {}
 local slotCdFill: { [number]: Frame } = {}
 local slotCdLabel: { [number]: TextLabel } = {}
 local abilityNameById: { [string]: string } = {}
+local abilityInfoById: { [string]: ActiveInfo } = {}
 
 for i = 1, HotbarConfig.SlotCount do
 	local btn = Instance.new("TextButton")
 	btn.Name = "Slot" .. i
 	btn.Size = UDim2.fromOffset(52, 52)
 	btn.Position = UDim2.fromOffset(10 + (i - 1) * 56, 6)
-	btn.BackgroundColor3 = Color3.fromRGB(32, 36, 42)
+	btn.BackgroundColor3 = C.SlotHover
 	btn.BorderSizePixel = 0
-	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = 11
-	btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+	btn.Font = UiTheme.Font.Title
+	btn.TextSize = UiTheme.TextSize.Caption
+	btn.TextColor3 = C.TextDim
 	btn.Text = HotbarConfig.Labels[i]
 	btn.ClipsDescendants = true
 	btn.Parent = bar
@@ -156,10 +148,23 @@ for i = 1, HotbarConfig.SlotCount do
 	cdLabel.Parent = btn
 	slotCdLabel[i] = cdLabel
 
-	btn.MouseButton1Click:Connect(function()
+	btn.MouseButton2Click:Connect(function()
 		if snapshot.hotbar[i] and not draggingId then
 			UnbindHotbar:FireServer(i)
 		end
+	end)
+
+	btn.MouseEnter:Connect(function()
+		local slotId = snapshot.hotbar[i]
+		if not slotId then
+			return
+		end
+		local info = abilityInfoById[slotId]
+		local title, body = AbilityTooltip.Build(slotId, info and { name = info.name, desc = info.desc } or nil)
+		HoverTooltip.show(title, body, btn)
+	end)
+	btn.MouseLeave:Connect(function()
+		HoverTooltip.hide()
 	end)
 end
 
@@ -170,16 +175,18 @@ local function refreshPool()
 		end
 	end
 	abilityNameById = {}
+	abilityInfoById = {}
 	for i, a in snapshot.actives do
 		abilityNameById[a.abilityId] = a.name
+		abilityInfoById[a.abilityId] = a
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(1, -4, 0, 44)
-		btn.BackgroundColor3 = Color3.fromRGB(32, 36, 42)
+		btn.BackgroundColor3 = C.SlotHover
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = true
-		btn.Font = Enum.Font.Gotham
-		btn.TextSize = 12
-		btn.TextColor3 = Color3.fromRGB(220, 220, 225)
+		btn.Font = UiTheme.Font.Body
+		btn.TextSize = UiTheme.TextSize.Body
+		btn.TextColor3 = C.Text
 		btn.TextXAlignment = Enum.TextXAlignment.Left
 		btn.LayoutOrder = i
 		btn.Text = string.format("  %s\n  %s", a.name, a.desc)
@@ -187,6 +194,14 @@ local function refreshPool()
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, 6)
 		c.Parent = btn
+
+		btn.MouseEnter:Connect(function()
+			local title, body = AbilityTooltip.Build(a.abilityId, { name = a.name, desc = a.desc })
+			HoverTooltip.show(title, body, btn)
+		end)
+		btn.MouseLeave:Connect(function()
+			HoverTooltip.hide()
+		end)
 
 		btn.MouseButton1Down:Connect(function()
 			draggingId = a.abilityId

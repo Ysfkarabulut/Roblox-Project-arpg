@@ -5,6 +5,7 @@
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 local InventoryService = require(script.Parent.InventoryService)
+local CurrencyService = require(script.Parent.CurrencyService)
 
 local WeaponAssemblyService = {}
 
@@ -144,12 +145,9 @@ function WeaponAssemblyService.SocketGem(userId: number, frameUuid: string, gemU
 		return false, "GemInUse"
 	end
 
-	-- Return existing gem to bag (do not destroy)
+	-- Replacing socketed gem destroys the old gem (GDD: gems break on removal)
 	if frame.gemUuid then
-		local oldGem = InventoryService.FindRaw(userId, frame.gemUuid)
-		if oldGem then
-			oldGem.installedIn = nil
-		end
+		InventoryService.RemoveItem(userId, frame.gemUuid)
 		frame.gemUuid = nil
 	end
 
@@ -158,7 +156,8 @@ function WeaponAssemblyService.SocketGem(userId: number, frameUuid: string, gemU
 	return true, nil
 end
 
-function WeaponAssemblyService.UnsocketGem(userId: number, frameUuid: string): (boolean, string?)
+--- @param preserve false = gem destroyed (default) · true = spend premium currency, gem returns to bag
+function WeaponAssemblyService.UnsocketGem(userId: number, frameUuid: string, preserve: boolean?): (boolean, string?)
 	local frame = getRawFrame(userId, frameUuid)
 	if not frame then
 		return false, "NotFrame"
@@ -166,12 +165,25 @@ function WeaponAssemblyService.UnsocketGem(userId: number, frameUuid: string): (
 	if not frame.gemUuid then
 		return false, "NoGem"
 	end
-	local gemInst = InventoryService.FindRaw(userId, frame.gemUuid)
-	if gemInst then
-		gemInst.installedIn = nil
-	end
+
+	local gemUuid = frame.gemUuid
 	frame.gemUuid = nil
-	return true, nil
+
+	if preserve == true then
+		local spend = CurrencyService.TrySpendForGemPreserveUnsocket(userId)
+		if not spend.ok then
+			frame.gemUuid = gemUuid
+			return false, spend.reason or "InsufficientPremium"
+		end
+		local gemInst = InventoryService.FindRaw(userId, gemUuid)
+		if gemInst then
+			gemInst.installedIn = nil
+		end
+		return true, "Preserved"
+	end
+
+	InventoryService.RemoveItem(userId, gemUuid)
+	return true, "Destroyed"
 end
 
 function WeaponAssemblyService.ToResolved(userId: number, frameUuid: string)

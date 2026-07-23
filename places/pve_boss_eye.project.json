@@ -1,0 +1,28 @@
+{
+  "name": "ARPG-Boss-Eye",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "Shared": { "$path": "../src/shared" },
+      "WeaponMeshes": { "$className": "Folder", "$ignoreUnknownInstances": true },
+      "CombatAnims": { "$className": "Folder", "$ignoreUnknownInstances": true }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "PlaceRole": { "$className": "StringValue", "$properties": { "Value": "PveBossEye" } }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": { "$path": "../src/server" }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": { "$path": "../src/client" }
+      }
+    }
+  }
+}

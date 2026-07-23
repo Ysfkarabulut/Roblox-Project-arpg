@@ -104,8 +104,11 @@ function DamagePipeline.AttackSpeedMult(asTier: string?, dex: number): number
 	return math.min(tier * (1 + dex * CombatConfig.KDexAs), CombatConfig.AsCap)
 end
 
-function DamagePipeline.HitRecovery(asTier: string?, dex: number): number
-	return 0.15 / DamagePipeline.AttackSpeedMult(asTier, dex)
+function DamagePipeline.HitRecovery(asTier: string?, dex: number, comboStep: number?, attackSpeedMult: number?): number
+	local step = math.clamp(comboStep or 1, 1, 3)
+	local stepMult = CombatConfig.ComboRecoveryStepMult[step] or 1
+	local asMult = math.clamp(attackSpeedMult or DamagePipeline.AttackSpeedMult(asTier, dex), 0.65, CombatConfig.AsCap)
+	return (CombatConfig.ComboHitRecoveryBase / asMult) * stepMult
 end
 
 return DamagePipeline

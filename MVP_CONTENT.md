@@ -6,6 +6,8 @@
 
 Oyuncu seviyesi MVP testi: **Lv30** (**116** dağıtılabilir stat point — `(30-1) × 4`; bkz. `COMBAT_STAT_SHEET.md` §12.1).
 
+**Studio hızlı grant:** `DevRemotes.GrantMvpLoadout` veya F8 → *(GrantMvpLoadout butonu eklenebilir)* — steel set + 1H sword parçaları + fire gem + shield.
+
 ---
 
 ## 1. Mekanik kapsam checklist

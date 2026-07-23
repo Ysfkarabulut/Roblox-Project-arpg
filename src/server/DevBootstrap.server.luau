@@ -7,14 +7,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+local PlaceRuntime = require(ReplicatedStorage.Shared.Config.PlaceRuntime)
+if not PlaceRuntime.IsLobby() then
+	return
+end
+
 local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
 local LegacyWeaponConverter = require(ReplicatedStorage.Shared.Config.LegacyWeaponConverter)
 local InventoryService = require(script.Parent.Inventory.InventoryService)
 local LoadoutService = require(script.Parent.Inventory.LoadoutService)
 local HotbarService = require(script.Parent.Hotbar.HotbarService)
 local StatService = require(script.Parent.Combat.StatService)
+local PassiveService = require(script.Parent.Combat.PassiveService)
 local DummyService = require(script.Parent.Combat.DummyService)
 local AbilityService = require(script.Parent.Combat.AbilityService)
+local CurrencyService = require(script.Parent.Inventory.CurrencyService)
+local StanceConfig = require(ReplicatedStorage.Shared.Config.StanceConfig)
+local WeaponResolver = require(ReplicatedStorage.Shared.Combat.WeaponResolver)
+local MatchResultBridge = require(script.Parent.Loot.MatchResultBridge)
 
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "DevRemotes"
@@ -35,10 +45,13 @@ local function remoteFunction(name: string): RemoteFunction
 end
 
 local GrantItem = remoteEvent("GrantItem")
+local GrantMvpLoadout = remoteEvent("GrantMvpLoadout")
 local SetStats = remoteEvent("SetStats")
 local ResetStats = remoteEvent("ResetStats")
 local ResetDummy = remoteEvent("ResetDummy")
 local SetDummyMaxHp = remoteEvent("SetDummyMaxHp")
+local GrantPremium = remoteEvent("GrantPremium")
+local SimulateMatchResult = remoteEvent("SimulateMatchResult")
 local AutoFillHotbar = remoteEvent("AutoFillHotbar")
 local DevNotify = remoteEvent("DevNotify")
 local GetDevState = remoteFunction("GetDevState")
@@ -59,13 +72,39 @@ end
 
 local function buildInventorySnapshot(userId: number)
 	HotbarService.Prune(userId)
+	PassiveService.Refresh(userId)
+	local loadout = LoadoutService.Get(userId)
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	local mainDef = if resolved and resolved.complete then WeaponResolver.AsItemDef(resolved) else nil
+	local offDef = nil
+	if loadout.off then
+		local inst = InventoryService.Find(userId, loadout.off)
+		offDef = inst and ItemDefs.Get(inst.defId)
+	end
 	return {
 		items = InventoryService.GetItems(userId),
-		loadout = LoadoutService.Get(userId),
+		loadout = loadout,
 		hotbar = HotbarService.GetBinds(userId),
 		actives = HotbarService.GetAvailableActives(userId),
+		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),
+		xpProgress = StatService.GetXpProgress(userId),
 		derived = StatService.Derived(userId),
+		stance = StanceConfig.Resolve(mainDef, offDef),
+		resolvedMain = if resolved and resolved.complete
+			then {
+				displayName = resolved.displayName,
+				element = resolved.element,
+				baseDamage = resolved.baseDamage,
+				kind = resolved.kind,
+				family = resolved.family,
+				scaling = resolved.scaling,
+				attackSpeedMult = resolved.attackSpeedMult,
+				complete = resolved.complete,
+			}
+			else nil,
+		premiumCurrency = CurrencyService.GetPremium(userId),
+		gemPreserveUnsocketCost = CurrencyService.GemPreserveUnsocketCost,
 	}
 end
 
@@ -119,6 +158,28 @@ GrantItem.OnServerEvent:Connect(function(player: Player, defId: string, count: n
 	pushInventory(player)
 	local def = ItemDefs.Get(defId)
 	notify(player, true, `Granted {n}× {if def then def.name else defId}`)
+end)
+
+GrantMvpLoadout.OnServerEvent:Connect(function(player: Player)
+	if not isDev(player) then
+		return
+	end
+	local ids = {
+		"h_1h_sword",
+		"b_sword_st",
+		"p_pommel_balanced",
+		"g_fire",
+		"a_head_steel",
+		"a_chest_steel",
+		"a_hands_steel",
+		"a_feets_steel",
+		"o_shield_t1",
+	}
+	for _, defId in ids do
+		InventoryService.AddItem(player.UserId, defId)
+	end
+	pushInventory(player)
+	notify(player, true, "MVP test loadout granted (steel + sword parts)")
 end)
 
 SetStats.OnServerEvent:Connect(function(player: Player, patch: any)
@@ -178,8 +239,64 @@ AutoFillHotbar.OnServerEvent:Connect(function(player: Player)
 	notify(player, true, `Hotbar auto-filled ({n} new)`)
 end)
 
+GrantPremium.OnServerEvent:Connect(function(player: Player, amount: number?)
+	if not isDev(player) then
+		return
+	end
+	local n = math.clamp(math.floor(if typeof(amount) == "number" then amount else 1), 1, 999)
+	CurrencyService.GrantPremium(player.UserId, n)
+	pushInventory(player)
+	notify(player, true, `Granted {n} premium currency`, { premium = CurrencyService.GetPremium(player.UserId) })
+end)
+
+SimulateMatchResult.OnServerEvent:Connect(function(player: Player, payload: any)
+	if not isDev(player) then
+		return
+	end
+	if typeof(payload) ~= "table" then
+		notify(player, false, "SimulateMatchResult: pass a table { mode, won, bossId? }")
+		return
+	end
+	local mode = payload.mode
+	local won = payload.won == true
+	local bossId = if typeof(payload.bossId) == "string" then payload.bossId else nil
+	if mode ~= "PvP" and mode ~= "PvE" then
+		notify(player, false, "mode must be PvP or PvE")
+		return
+	end
+
+	local result = MatchResultBridge.FinishMatch(player, {
+		mode = mode,
+		won = won,
+		bossId = bossId,
+	})
+
+	local parts = {}
+	if result.xpGained and result.xpGained > 0 then
+		table.insert(parts, `XP +{result.xpGained}`)
+	end
+	if result.gachaGranted then
+		local def = ItemDefs.Get(result.gachaGranted.defId)
+		table.insert(parts, `Gacha: {if def then def.name else result.gachaGranted.defId}`)
+	elseif won then
+		table.insert(parts, "Gacha: —")
+	end
+	if result.bossGranted then
+		local def = ItemDefs.Get(result.bossGranted.defId)
+		table.insert(parts, `Boss: {if def then def.name else result.bossGranted.defId}`)
+	elseif won and mode == "PvE" and bossId then
+		table.insert(parts, "Boss: —")
+	end
+	if not won then
+		table.insert(parts, "Loss — no loot")
+	end
+
+	notify(player, result.ok == true, table.concat(parts, " · "), {
+		matchResult = result,
+	})
+end)
+
 Players.PlayerRemoving:Connect(function(player)
-	StatService.Clear(player.UserId)
 	AbilityService.Clear(player.UserId)
 end)
 

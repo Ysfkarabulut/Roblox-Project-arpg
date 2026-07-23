@@ -21,6 +21,7 @@ local PART_COLORS = {
 	WeaponPommel = Color3.fromRGB(110, 110, 120),
 	ElementGem = Color3.fromRGB(255, 120, 80),
 	WeaponFrame = Color3.fromRGB(70, 90, 120),
+	LootBox = Color3.fromRGB(210, 175, 90),
 }
 
 function ItemIcon.ResolveTemplate(defId: string?): Model?
@@ -107,9 +108,19 @@ function ItemIcon.Mount(parent: GuiObject, defId: string?, opts: MountOpts?): Vi
 		fb.Name = "ItemIconFallback"
 		fb.Size = UDim2.fromScale(1, 1)
 		local partColor = def and PART_COLORS[def.kind]
-		fb.BackgroundColor3 = partColor
-			or AnimConfig.ElementColor[(def and def.element) or "Neutral"]
-			or Color3.fromRGB(120, 120, 130)
+		if def and def.kind == "LootBox" then
+			if def.rarity == "Rare" then
+				fb.BackgroundColor3 = Color3.fromRGB(120, 150, 230)
+			elseif def.rarity == "BossExclusive" then
+				fb.BackgroundColor3 = Color3.fromRGB(170, 100, 220)
+			else
+				fb.BackgroundColor3 = PART_COLORS.LootBox
+			end
+		else
+			fb.BackgroundColor3 = partColor
+				or AnimConfig.ElementColor[(def and def.element) or "Neutral"]
+				or Color3.fromRGB(120, 120, 130)
+		end
 		fb.BackgroundTransparency = 0.55
 		fb.BorderSizePixel = 0
 		fb.ZIndex = opts.zIndex or 1

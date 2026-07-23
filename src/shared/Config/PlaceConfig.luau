@@ -1,5 +1,6 @@
 -- PlaceId'leri Roblox Creator Dashboard'dan doldur.
--- Lobby / PvP / Boss ayrı place = TeleportService loading screen.
+-- Lobby + her PvP bracket ayrı place (TeleportService).
+-- Studio: PlaceIds = 0 → aynı place, offset greybox arena (PlaceRole ile arena test).
 
 export type PlaceKey =
 	"Lobby"

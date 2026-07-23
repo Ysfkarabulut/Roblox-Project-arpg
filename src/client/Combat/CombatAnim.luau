@@ -317,7 +317,7 @@ local function proceduralBody(char: Model, family: string, step: number, dur: nu
 	end
 end
 
-local function proceduralSwing(char: Model, family: string?, step: number?)
+local function proceduralSwing(char: Model, family: string?, step: number?, attackSpeedMult: number?)
 	swingToken += 1
 	local token = swingToken
 	local fam = family or "Sword1H"
@@ -326,7 +326,9 @@ local function proceduralSwing(char: Model, family: string?, step: number?)
 	local profileSet = profiles[fam] or profiles.Sword1H
 	local key = "L" .. tostring(s)
 	local prof = profileSet[key] or profileSet.L1
-	local dur = prof.dur or 0.24
+	local stepScale = if s == 3 then 1.38 elseif s == 2 then 1.12 else 1.0
+	local asMult = math.clamp(attackSpeedMult or 1, 0.65, 1.45)
+	local dur = (prof.dur or 0.24) * stepScale / asMult
 	local outDur = dur * 0.42
 	local backDur = dur * 0.58
 	swingUntil = os.clock() + dur + 0.12
@@ -529,20 +531,90 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 	if track then
 		stopActionTracks(0.08)
 		track.Looped = false
-		local stepMul = if step == 3 then 0.92 elseif step == 2 then 1.05 else 1.12
-		local speed = if base == "Cast" then 1.2 else (1.05 * stepMul)
+		local asMult = if typeof(opts) == "table" and typeof(opts.attackSpeedMult) == "number" then opts.attackSpeedMult else 1
+		asMult = math.clamp(asMult, 0.65, 1.45)
+		local stepMul = if step == 3 then 0.88 elseif step == 2 then 1.0 else 1.14
+		local speed = if base == "Cast" then (1.15 * asMult / (if step == 3 then 1.28 elseif step == 2 then 1.1 else 1)) else (1.05 * stepMul * asMult)
 		track:Play(0.05, 1, speed)
 		local maxSec = if base == "Cast" or base == "Buff" then 0.65 else 0.85
+		maxSec *= if step == 3 then 1.35 elseif step == 2 then 1.1 else 1
+		maxSec /= asMult
 		scheduleAutoStop(base, track, maxSec)
 	end
 
 	if fam and step then
-		proceduralSwing(char, fam, step)
+		local asMult = if typeof(opts) == "table" and typeof(opts.attackSpeedMult) == "number" then opts.attackSpeedMult else 1
+		proceduralSwing(char, fam, step, asMult)
 	end
 end
 
 function CombatAnim.StopAll(fade: number?)
 	stopActionTracks(fade)
+end
+
+local hitStopToken = 0
+
+function CombatAnim.ApplyHitStop(sec: number)
+	if sec <= 0 then
+		return
+	end
+	local player = Players.LocalPlayer
+	local char = player.Character
+	if not char then
+		return
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local animator = hum and hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+
+	hitStopToken += 1
+	local token = hitStopToken
+	swingUntil = math.max(swingUntil, os.clock() + sec)
+
+	local saved: { { AnimationTrack, number } } = {}
+	for _, track in animator:GetPlayingAnimationTracks() do
+		if track.Speed > 0.01 then
+			table.insert(saved, { track, track.Speed })
+			track:AdjustSpeed(0)
+		end
+	end
+
+	task.delay(sec, function()
+		if hitStopToken ~= token then
+			return
+		end
+		for _, pair in saved do
+			local track, speed = pair[1], pair[2]
+			if track.IsPlaying then
+				track:AdjustSpeed(speed)
+			end
+		end
+	end)
+end
+
+function CombatAnim.PlayReload(duration: number)
+	local char = Players.LocalPlayer.Character
+	if not char then
+		return
+	end
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local rShoulder = findMotor(char, "RightShoulder")
+	if hum and rShoulder and rShoulder:IsA("Motor6D") then
+		local base = rShoulder.C0
+		local tucked = base * CFrame.Angles(math.rad(-25), math.rad(15), math.rad(10))
+		TweenService:Create(rShoulder, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			C0 = tucked,
+		}):Play()
+		task.delay(duration, function()
+			if rShoulder.Parent then
+				TweenService:Create(rShoulder, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					C0 = base,
+				}):Play()
+			end
+		end)
+	end
 end
 
 local function applyWeaponHold(char: Model)

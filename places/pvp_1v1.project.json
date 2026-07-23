@@ -1,0 +1,45 @@
+{
+  "name": "ARPG-Arena-1v1",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$ignoreUnknownInstances": true,
+      "Shared": {
+        "$path": "../src/shared"
+      },
+      "WeaponMeshes": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      },
+      "CombatAnims": {
+        "$className": "Folder",
+        "$ignoreUnknownInstances": true
+      }
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "PlaceRole": {
+        "$className": "StringValue",
+        "$properties": {
+          "Value": "Pvp1v1"
+        }
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": {
+        "$path": "../src/server"
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": {
+          "$path": "../src/client"
+        }
+      }
+    }
+  }
+}

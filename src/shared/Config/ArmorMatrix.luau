@@ -99,6 +99,11 @@ local function abilityIdsFor(el: string, slot: string): { any }
 				ArmorAbilityDefs.AbilitySlot("unbound_hide_armorpassive", "Unbound Hide"),
 			}
 		end
+		if el == "Water" then
+			return {
+				ArmorAbilityDefs.AbilitySlot("fortifyaura_armorpassive", "Tide Aura"),
+			}
+		end
 		return {
 			ArmorAbilityDefs.AbilitySlot("carapace_armorpassive", `{s.label} Carapace`),
 		}

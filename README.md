@@ -39,6 +39,7 @@ src/client/Inventory/ GearUI + HotbarUI (Q E R 1 2 3, sürükle-bırak)
 ```
 
 `rojo serve` / Studio sync ile bağla. PlaceId'leri `PlaceConfig.luau` içine yaz.  
+**Lobby:** `default.project.json` · **Arena places:** `places/pvp_1v1.project.json` (ve 2v2/3v3)  
 **UI:** `I` Inventory · `L` Loadout · `H` Active havuzu — hotbar her zaman altta.
 
 

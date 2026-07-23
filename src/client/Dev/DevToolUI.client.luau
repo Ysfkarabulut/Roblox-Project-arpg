@@ -12,18 +12,30 @@ if not RunService:IsStudio() then
 	return
 end
 
+local PlaceRuntime = require(ReplicatedStorage.Shared.Config.PlaceRuntime)
+if not PlaceRuntime.IsLobby() then
+	return
+end
+
 local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
+local UiTheme = require(script.Parent.Parent.UI.UiTheme)
+local C = UiTheme.Colors
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local remotes = ReplicatedStorage:WaitForChild("DevRemotes")
+local remotes = ReplicatedStorage:WaitForChild("DevRemotes", 10)
+if not remotes then
+	warn("[DevToolUI] DevRemotes missing (lobby only)")
+	return
+end
 local GrantItem = remotes:WaitForChild("GrantItem") :: RemoteEvent
 local SetStats = remotes:WaitForChild("SetStats") :: RemoteEvent
 local ResetStats = remotes:WaitForChild("ResetStats") :: RemoteEvent
 local ResetDummy = remotes:WaitForChild("ResetDummy") :: RemoteEvent
 local SetDummyMaxHp = remotes:WaitForChild("SetDummyMaxHp") :: RemoteEvent
 local DevNotify = remotes:WaitForChild("DevNotify") :: RemoteEvent
+local SimulateMatchResult = remotes:WaitForChild("SimulateMatchResult") :: RemoteEvent
 local GetDevState = remotes:WaitForChild("GetDevState") :: RemoteFunction
 
 local open = false
@@ -43,40 +55,31 @@ table.sort(allDefs, function(a, b)
 	return a.name:lower() < b.name:lower()
 end)
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "DevToolUI"
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-gui.DisplayOrder = 50
+local gui = UiTheme.ScreenGui({
+	name = "DevToolUI",
+	displayOrder = UiTheme.DisplayOrder.Dev,
+	zIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
 gui.Parent = playerGui
 
-local panel = Instance.new("Frame")
-panel.Name = "Panel"
-panel.Size = UDim2.fromOffset(460, 520)
-panel.Position = UDim2.new(0.5, -230, 0.5, -260)
-panel.BackgroundColor3 = Color3.fromRGB(18, 20, 24)
-panel.BorderSizePixel = 0
-panel.Visible = false
-panel.Parent = gui
+local panel = UiTheme.Panel({
+	parent = gui,
+	name = "Panel",
+	size = UDim2.fromOffset(460, 592),
+	position = UDim2.new(0.5, -230, 0.5, -296),
+	visible = false,
+})
+UiTheme.Stroke(panel, { color = C.Dev, thickness = 1.5 })
 
-local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 10)
-corner.Parent = panel
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(70, 120, 90)
-stroke.Thickness = 1.5
-stroke.Parent = panel
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -16, 0, 28)
-title.Position = UDim2.fromOffset(8, 8)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextSize = 16
-title.TextColor3 = Color3.fromRGB(120, 220, 160)
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Text = "Dev Tools  (F8)"
-title.Parent = panel
+local title = UiTheme.Label({
+	parent = panel,
+	text = "Dev Tools  (F8)",
+	size = UDim2.new(1, -16, 0, 28),
+	position = UDim2.fromOffset(8, 8),
+	font = UiTheme.Font.Title,
+	textSize = UiTheme.TextSize.Heading,
+	color = C.Dev,
+})
 
 local status = Instance.new("TextLabel")
 status.Name = "Status"
@@ -285,10 +288,71 @@ autoHotbarBtn.MouseButton1Click:Connect(function()
 	AutoFillHotbar:FireServer()
 end)
 
+-- Match loot sim (Faz 3)
+local matchFrame = Instance.new("Frame")
+matchFrame.Size = UDim2.new(1, -16, 0, 76)
+matchFrame.Position = UDim2.fromOffset(8, 232)
+matchFrame.BackgroundColor3 = Color3.fromRGB(28, 30, 36)
+matchFrame.BorderSizePixel = 0
+matchFrame.Parent = panel
+local mc = Instance.new("UICorner")
+mc.CornerRadius = UDim.new(0, 6)
+mc.Parent = matchFrame
+
+local matchTitle = Instance.new("TextLabel")
+matchTitle.Size = UDim2.fromOffset(80, 16)
+matchTitle.Position = UDim2.fromOffset(8, 4)
+matchTitle.BackgroundTransparency = 1
+matchTitle.Font = Enum.Font.GothamBold
+matchTitle.TextSize = 10
+matchTitle.TextColor3 = Color3.fromRGB(150, 160, 175)
+matchTitle.TextXAlignment = Enum.TextXAlignment.Left
+matchTitle.Text = "Match sim"
+matchTitle.Parent = matchFrame
+
+local function matchBtn(text: string, x: number, color: Color3, y: number?)
+	local btn = Instance.new("TextButton")
+	btn.Size = UDim2.fromOffset(128, 28)
+	btn.Position = UDim2.fromOffset(x, y or 12)
+	btn.BackgroundColor3 = color
+	btn.BorderSizePixel = 0
+	btn.Font = Enum.Font.GothamBold
+	btn.TextSize = 11
+	btn.TextColor3 = Color3.fromRGB(240, 245, 250)
+	btn.Text = text
+	btn.Parent = matchFrame
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, 4)
+	bc.Parent = btn
+	return btn
+end
+
+matchBtn("PvE Boss Win", 8, Color3.fromRGB(50, 110, 70)).MouseButton1Click:Connect(function()
+	SimulateMatchResult:FireServer({ mode = "PvE", won = true, bossId = "eye" })
+end)
+matchBtn("PvP Win", 142, Color3.fromRGB(50, 90, 130)).MouseButton1Click:Connect(function()
+	SimulateMatchResult:FireServer({ mode = "PvP", won = true })
+end)
+matchBtn("Loss", 276, Color3.fromRGB(90, 55, 55)).MouseButton1Click:Connect(function()
+	SimulateMatchResult:FireServer({ mode = "PvE", won = false, bossId = "eye" })
+end)
+
+local bossRemotes = ReplicatedStorage:WaitForChild("BossRemotes")
+local StartBossDev = bossRemotes:WaitForChild("StartBossDev") :: RemoteEvent
+matchBtn("Start Eye Boss", 8, Color3.fromRGB(120, 60, 140), 44).MouseButton1Click:Connect(function()
+	StartBossDev:FireServer({ bossId = "eye" })
+end)
+
+local pvpRemotes = ReplicatedStorage:WaitForChild("PvpRemotes")
+local StartPvpDev = pvpRemotes:WaitForChild("StartPvpDev") :: RemoteEvent
+matchBtn("PvP Practice", 142, Color3.fromRGB(70, 90, 140), 44).MouseButton1Click:Connect(function()
+	StartPvpDev:FireServer()
+end)
+
 -- Item spawn
 local search = Instance.new("TextBox")
 search.Size = UDim2.new(1, -80, 0, 30)
-search.Position = UDim2.fromOffset(8, 232)
+search.Position = UDim2.fromOffset(8, 316)
 search.BackgroundColor3 = Color3.fromRGB(40, 44, 52)
 search.BorderSizePixel = 0
 search.Font = Enum.Font.Gotham
@@ -304,7 +368,7 @@ sec.Parent = search
 
 local countBox = Instance.new("TextBox")
 countBox.Size = UDim2.fromOffset(48, 30)
-countBox.Position = UDim2.new(1, -64, 0, 232)
+countBox.Position = UDim2.new(1, -64, 0, 316)
 countBox.BackgroundColor3 = Color3.fromRGB(50, 54, 62)
 countBox.BorderSizePixel = 0
 countBox.Font = Enum.Font.Gotham
@@ -319,8 +383,8 @@ cbc.CornerRadius = UDim.new(0, 4)
 cbc.Parent = countBox
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -16, 1, -278)
-scroll.Position = UDim2.fromOffset(8, 270)
+scroll.Size = UDim2.new(1, -16, 1, -362)
+scroll.Position = UDim2.fromOffset(8, 354)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 4

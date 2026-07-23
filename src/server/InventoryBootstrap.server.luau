@@ -40,6 +40,9 @@ local RemoveWeaponPart = remoteEvent("RemoveWeaponPart")
 local SocketGem = remoteEvent("SocketGem")
 local UnsocketGem = remoteEvent("UnsocketGem")
 local CreateWeaponFrame = remoteEvent("CreateWeaponFrame")
+local AllocateStat = remoteEvent("AllocateStat")
+
+local PlayerProfileService = require(script.Parent.Profile.PlayerProfileService)
 
 local InventoryService = require(script.Parent.Inventory.InventoryService)
 local LoadoutService = require(script.Parent.Inventory.LoadoutService)
@@ -47,6 +50,7 @@ local WeaponAssemblyService = require(script.Parent.Inventory.WeaponAssemblyServ
 local HotbarService = require(script.Parent.Hotbar.HotbarService)
 local StatService = require(script.Parent.Combat.StatService)
 local PassiveService = require(script.Parent.Combat.PassiveService)
+local CurrencyService = require(script.Parent.Inventory.CurrencyService)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
 local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
@@ -90,9 +94,12 @@ local function buildSnapshot(userId: number)
 		actives = HotbarService.GetAvailableActives(userId),
 		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),
+		xpProgress = StatService.GetXpProgress(userId),
 		derived = StatService.Derived(userId),
 		stance = resolveStance(userId),
 		resolvedMain = buildResolvedSummary(userId),
+		premiumCurrency = CurrencyService.GetPremium(userId),
+		gemPreserveUnsocketCost = CurrencyService.GemPreserveUnsocketCost,
 	}
 end
 
@@ -106,6 +113,10 @@ GetSnapshot.OnServerInvoke = function(player: Player)
 end
 
 EquipItem.OnServerEvent:Connect(function(player: Player, uuid: string, slotId: string)
+	local LoadoutLockService = require(script.Parent.Combat.LoadoutLockService)
+	if LoadoutLockService.IsLocked(player.UserId) then
+		return
+	end
 	if typeof(uuid) ~= "string" or typeof(slotId) ~= "string" then
 		return
 	end
@@ -211,11 +222,14 @@ SocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, gemU
 	push(player)
 end)
 
-UnsocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string)
+UnsocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, preserve: boolean?)
 	if typeof(frameUuid) ~= "string" then
 		return
 	end
-	WeaponAssemblyService.UnsocketGem(player.UserId, frameUuid)
+	local ok, err = WeaponAssemblyService.UnsocketGem(player.UserId, frameUuid, preserve == true)
+	if not ok and err then
+		warn(`[Inventory] UnsocketGem failed for {player.Name}: {err}`)
+	end
 	if _G.RefreshWeaponVisuals then
 		_G.RefreshWeaponVisuals(player)
 	end
@@ -227,48 +241,64 @@ CreateWeaponFrame.OnServerEvent:Connect(function(player: Player)
 	push(player)
 end)
 
+AllocateStat.OnServerEvent:Connect(function(player: Player, statKey: string)
+	if typeof(statKey) ~= "string" then
+		return
+	end
+	local ok, err = StatService.AllocateStat(player.UserId, statKey)
+	if not ok then
+		warn("[Stat] Allocate failed", player.Name, err)
+		return
+	end
+	PlayerProfileService.Save(player.UserId)
+	push(player)
+end)
+
+local function autoEquipPlaytest(userId: number)
+	local lo = LoadoutService.Get(userId)
+
+	if not lo.main then
+		for _, item in InventoryService.GetItems(userId) do
+			if item.defId == "weapon_frame" and item.parts and item.parts.handle and item.parts.blade and item.parts.pommel then
+				LoadoutService.Equip(userId, item.uuid, "main")
+				break
+			end
+		end
+	end
+
+	local ArmorMatrix = require(game.ReplicatedStorage.Shared.Config.ArmorMatrix)
+	local armorSlots = { "head", "chest", "hands", "feets" }
+	for _, slotId in armorSlots do
+		local loNow = LoadoutService.Get(userId)
+		if not (loNow :: any)[slotId] then
+			local wantDef = ArmorMatrix.TestSetIds[slotId]
+			for _, item in InventoryService.GetItems(userId) do
+				if item.defId == wantDef then
+					LoadoutService.Equip(userId, item.uuid, slotId)
+					break
+				end
+			end
+		end
+	end
+
+	HotbarService.AutoFill(userId)
+end
+
 Players.PlayerAdded:Connect(function(player)
 	task.defer(function()
 		if not player.Parent then
 			return
 		end
-		local userId = player.UserId
-		local lo = LoadoutService.Get(userId)
-
-		-- Equip first complete WeaponFrame into main if empty
-		if not lo.main then
-			for _, item in InventoryService.GetItems(userId) do
-				if item.defId == "weapon_frame" and item.parts and item.parts.handle and item.parts.blade and item.parts.pommel then
-					LoadoutService.Equip(userId, item.uuid, "main")
-					HotbarService.AutoFill(userId)
-					break
-				end
-			end
-		end
-
-		-- Equip Steel tank set into empty armor slots (playtest default)
-		local ArmorMatrix = require(game.ReplicatedStorage.Shared.Config.ArmorMatrix)
-		local armorSlots = { "head", "chest", "hands", "feets" }
-		for _, slotId in armorSlots do
-			local loNow = LoadoutService.Get(userId)
-			if not (loNow :: any)[slotId] then
-				local wantDef = ArmorMatrix.TestSetIds[slotId]
-				for _, item in InventoryService.GetItems(userId) do
-					if item.defId == wantDef then
-						LoadoutService.Equip(userId, item.uuid, slotId)
-						break
-					end
-				end
-			end
-		end
-
-		HotbarService.AutoFill(userId)
+		autoEquipPlaytest(player.UserId)
 		push(player)
 	end)
 end)
 
 for _, player in Players:GetPlayers() do
+	autoEquipPlaytest(player.UserId)
 	push(player)
 end
+
+_G.PushInventory = push
 
 print("[InventoryBootstrap] Inventory + Hotbar + Assembly ready")

@@ -89,7 +89,15 @@ function WeaponResolver.ResolveFrame(userId: number, frameInst: any, inventoryFi
 	local bladeMult = bladeDef.bladeDamageMult or 1
 	local pommelDmg = pommelDef.damageMult or 1
 	local pommelAs = pommelDef.attackSpeedMult or 1
-	local baseDamage = math.floor((handleDef.baseDamage or CombatConfig.DefaultWeaponBase) * bladeMult * pommelDmg + 0.5)
+	local upgradeMult = 1
+	if bladeInst and typeof((bladeInst :: any).upgradeLevel) == "number" then
+		local UpgradeDefs = require(script.Parent.Parent.Config.UpgradeDefs)
+		local lvl = (bladeInst :: any).upgradeLevel
+		if lvl > 0 then
+			upgradeMult = 1 + lvl * UpgradeDefs.DamagePctPerLevel
+		end
+	end
+	local baseDamage = math.floor((handleDef.baseDamage or CombatConfig.DefaultWeaponBase) * bladeMult * pommelDmg * upgradeMult + 0.5)
 
 	local element = "Neutral"
 	if gemDef and gemDef.element then

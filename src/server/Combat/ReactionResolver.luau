@@ -7,6 +7,7 @@ local Workspace = game:GetService("Workspace")
 
 local ReactionTable = require(game.ReplicatedStorage.Shared.Config.ReactionTable)
 local StatusService = require(script.Parent.StatusService)
+local CombatPressureService = require(script.Parent.CombatPressureService)
 
 local ReactionResolver = {}
 
@@ -60,7 +61,7 @@ local function chainNearby(originEntity: Instance, applyStatus: string, sourceUs
 			StatusService.Remove(model, "Wet")
 			local dur = if applyStatus == "Shock" then 0.5 else 5
 			local dps = if applyStatus == "Poisoned" then 3 else nil
-			StatusService.Apply(model, applyStatus, dur, {
+			CombatPressureService.TryApplyStatus(model, applyStatus, dur, {
 				sourceUserId = sourceUserId,
 				dps = dps,
 				silentBatch = true,
@@ -77,6 +78,27 @@ local function chainNearby(originEntity: Instance, applyStatus: string, sourceUs
 			try(plr.Character)
 		end
 	end
+end
+
+local function resolveOutputDuration(entity: Instance, def: any): number?
+	if def.outputDurationFrom == "maxInputs" then
+		return math.max(StatusService.RemainingSeconds(entity, def.a), StatusService.RemainingSeconds(entity, def.b))
+	end
+	if def.outputDurationFrom == "minInputs" then
+		local a = StatusService.RemainingSeconds(entity, def.a)
+		local b = StatusService.RemainingSeconds(entity, def.b)
+		if a <= 0 and b <= 0 then
+			return 0
+		end
+		if a <= 0 then
+			return b
+		end
+		if b <= 0 then
+			return a
+		end
+		return math.min(a, b)
+	end
+	return def.outputDuration
 end
 
 function ReactionResolver.ResolveEntity(entity: Instance)
@@ -133,6 +155,11 @@ function ReactionResolver.ResolveEntity(entity: Instance)
 					end
 				end
 
+				local outDur = if def.outputStatus then resolveOutputDuration(entity, def) else nil
+				if outDur and outDur <= 0 then
+					outDur = def.outputDuration or 0.1
+				end
+
 				StatusService.Remove(entity, def.a)
 				StatusService.Remove(entity, def.b)
 				consumed[def.a] = true
@@ -144,17 +171,18 @@ function ReactionResolver.ResolveEntity(entity: Instance)
 						dealBurst(entity, remBurst, def.id, src)
 					end
 				end
-				if def.outputStatus then
-					StatusService.Apply(entity, def.outputStatus, def.outputDuration, {
+				if def.outputStatus and outDur then
+					CombatPressureService.TryApplyStatus(entity, def.outputStatus, outDur, {
 						sourceUserId = src,
 						dps = outDps,
+						params = def.outputParams,
 						silentBatch = true,
 					})
 				end
 				if def.kind == "Chain" and def.chain then
 					chainNearby(entity, def.chain, src)
 					if def.chain == "Shock" then
-						StatusService.Apply(entity, "Shock", 0.5, { sourceUserId = src, silentBatch = true })
+						CombatPressureService.TryApplyStatus(entity, "Shock", 0.5, { sourceUserId = src, silentBatch = true })
 					elseif def.chain == "Poisoned" then
 						StatusService.Apply(entity, "Poisoned", 5, { sourceUserId = src, dps = 3, silentBatch = true })
 					end

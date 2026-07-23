@@ -11,6 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local AnimConfig = require(game.ReplicatedStorage.Shared.Config.AnimConfig)
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
+local StatusQuery = require(game.ReplicatedStorage.Shared.Combat.StatusQuery)
 local CombatVfx = require(script.Parent.CombatVfx)
 local KeyframeClipPlayer = require(script.Parent.KeyframeClipPlayer)
 
@@ -201,8 +202,23 @@ local function applyLean(char: Model, leanDeg: number, on: boolean)
 	char:SetAttribute("SprintLean", leanDeg)
 end
 
-local function applyWalkSpeed(hum: Humanoid, sprinting: boolean)
-	hum.WalkSpeed = if sprinting then CombatConfig.SprintWalkSpeed else baseWalkSpeed
+local function moveSpeedMult(char: Model): number
+	local mult = 1
+	local attr = char:GetAttribute("MoveSpeedMult")
+	if typeof(attr) == "number" then
+		mult *= math.clamp(attr, 0, 1)
+	end
+	local combo = char:GetAttribute("ComboMoveMult")
+	if typeof(combo) == "number" then
+		mult *= math.clamp(combo, 0, 1)
+	end
+	return mult
+end
+
+local function applyWalkSpeed(hum: Humanoid, char: Model, sprinting: boolean)
+	local mult = moveSpeedMult(char)
+	local speed = if sprinting then CombatConfig.SprintWalkSpeed else baseWalkSpeed
+	hum.WalkSpeed = speed * mult
 end
 
 local function isSprinting(): boolean
@@ -241,7 +257,7 @@ RunService.RenderStepped:Connect(function(dt)
 	local sprinting = isSprinting()
 
 	if hum then
-		applyWalkSpeed(hum, sprinting)
+		applyWalkSpeed(hum, char, sprinting)
 	end
 
 	if sprinting then

@@ -3,7 +3,6 @@
 ]]
 
 local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
 
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LegacyWeaponConverter = require(game.ReplicatedStorage.Shared.Config.LegacyWeaponConverter)
@@ -20,6 +19,7 @@ export type ItemInstance = {
 	parts: WeaponFrameParts?,
 	gemUuid: string?,
 	installedIn: string?,
+	upgradeLevel: number?,
 }
 
 local InventoryService = {}
@@ -43,6 +43,9 @@ local function cloneInstance(item: ItemInstance): ItemInstance
 	end
 	if item.installedIn then
 		copy.installedIn = item.installedIn
+	end
+	if typeof((item :: any).upgradeLevel) == "number" then
+		copy.upgradeLevel = (item :: any).upgradeLevel
 	end
 	return copy
 end
@@ -106,6 +109,19 @@ function InventoryService.AddItem(userId: number, defId: string, extra: { parts:
 	return cloneInstance(instance)
 end
 
+function InventoryService.ReplaceBag(userId: number, items: { ItemInstance })
+	bags[userId] = {}
+	for _, item in items do
+		if ItemDefs.Get(item.defId) then
+			table.insert(ensureBag(userId), cloneInstance(item))
+		end
+	end
+end
+
+function InventoryService.Clear(userId: number)
+	bags[userId] = nil
+end
+
 function InventoryService.RemoveItem(userId: number, uuid: string): boolean
 	local bag = ensureBag(userId)
 	for i, item in bag do
@@ -115,6 +131,18 @@ function InventoryService.RemoveItem(userId: number, uuid: string): boolean
 		end
 	end
 	return false
+end
+
+function InventoryService.TransferItem(fromUserId: number, toUserId: number, uuid: string): boolean
+	local raw = InventoryService.FindRaw(fromUserId, uuid)
+	if not raw then
+		return false
+	end
+	if not InventoryService.RemoveItem(fromUserId, uuid) then
+		return false
+	end
+	table.insert(ensureBag(toUserId), cloneInstance(raw))
+	return true
 end
 
 function InventoryService.SetInstalledIn(userId: number, partUuid: string, frameUuid: string?)
@@ -182,18 +210,23 @@ function InventoryService.ConvertLegacyWeapon(userId: number, legacyDefId: strin
 end
 
 function InventoryService.MigrateLegacyItems(userId: number)
+	local LoadoutService = require(script.Parent.LoadoutService)
 	local bag = ensureBag(userId)
-	local toConvert: { { index: number, defId: string } } = {}
+	local toConvert: { { index: number, defId: string, uuid: string } } = {}
 	for i, item in bag do
 		if LegacyWeaponConverter.IsLegacyWeaponId(item.defId) then
-			table.insert(toConvert, { index = i, defId = item.defId })
+			table.insert(toConvert, { index = i, defId = item.defId, uuid = item.uuid })
 		end
 	end
 	-- Reverse order so indices stay valid
 	for i = #toConvert, 1, -1 do
 		local entry = toConvert[i]
+		local slot = LoadoutService.GetSlotOf(userId, entry.uuid)
 		local frame = InventoryService.ConvertLegacyWeapon(userId, entry.defId)
 		if frame then
+			if slot then
+				LoadoutService.Equip(userId, frame.uuid, slot)
+			end
 			table.remove(bag, entry.index)
 		end
 	end
@@ -244,18 +277,6 @@ function InventoryService.GrantStarter(userId: number)
 	if not hasCompleteFrame then
 		InventoryService.CreateAssembledFrame(userId, "h_1h_sword", "b_sword_st", "p_balanced", "gem_steel")
 	end
-end
-
-Players.PlayerRemoving:Connect(function(player)
-	bags[player.UserId] = nil
-end)
-
-Players.PlayerAdded:Connect(function(player)
-	InventoryService.GrantStarter(player.UserId)
-end)
-
-for _, player in Players:GetPlayers() do
-	InventoryService.GrantStarter(player.UserId)
 end
 
 return InventoryService

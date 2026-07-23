@@ -13,6 +13,7 @@ local RunService = game:GetService("RunService")
 local QueueConfig = require(game.ReplicatedStorage.Shared.Config.QueueConfig)
 local PartyService = require(script.Parent.PartyService)
 local MatchTeleport = require(script.Parent.MatchTeleport)
+local LoadoutLockService = require(script.Parent.Parent.Combat.LoadoutLockService)
 
 type QueueDef = QueueConfig.QueueDef
 
@@ -101,6 +102,9 @@ end
 function QueueService.CancelForParty(partyId: string)
 	local ticket = ticketByPartyId[partyId]
 	if ticket then
+		for _, id in ticket.memberUserIds do
+			LoadoutLockService.Unlock(id)
+		end
 		removeTicket(ticket)
 	end
 end
@@ -141,6 +145,9 @@ function QueueService.Enqueue(leader: Player, queueId: string): (boolean, string
 	}
 	table.insert(queues[queueId], ticket)
 	ticketByPartyId[party.id] = ticket
+	for _, id in ticket.memberUserIds do
+		LoadoutLockService.Lock(id)
+	end
 
 	QueueService.TryMatch(queueId)
 	return true, nil
@@ -234,9 +241,29 @@ function QueueService.TryMatch(queueId: string)
 	local list = queues[queueId]
 
 	if def.mode == "PvE" then
-		while #list >= 1 do
-			local a = takeTicket(list, 1)
-			startMatch(queueId, def.placeKey, { { a } })
+		local i = 1
+		while i <= #list do
+			local t = list[i]
+			if t.partySize == def.teamSize then
+				takeTicket(list, i)
+				startMatch(queueId, def.placeKey, { { t } })
+			else
+				i += 1
+			end
+		end
+		if def.teamSize > 1 and oldestWait(list) >= QueueConfig.FillerTimeoutSec then
+			while true do
+				local solos = filterBySize(list, 1)
+				if #solos < def.teamSize then
+					break
+				end
+				local group: { QueueTicket } = {}
+				for _ = 1, def.teamSize do
+					table.insert(group, takeTicket(list, solos[1]))
+					solos = filterBySize(list, 1)
+				end
+				startMatch(queueId, def.placeKey, { group })
+			end
 		end
 		return
 	end

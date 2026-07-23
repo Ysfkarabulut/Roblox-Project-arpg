@@ -8,39 +8,37 @@ local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+local PlaceRuntime = require(ReplicatedStorage.Shared.Config.PlaceRuntime)
+
+local UiTheme = require(script.Parent.Parent.UI.UiTheme)
+local C = UiTheme.Colors
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local COL_BG = Color3.fromRGB(18, 20, 24)
-local COL_PANEL = Color3.fromRGB(28, 30, 36)
-local COL_SLOT = Color3.fromRGB(42, 44, 52)
-local COL_SLOT_EQ = Color3.fromRGB(48, 66, 54)
-local COL_SLOT_SEL = Color3.fromRGB(52, 72, 96)
-local COL_STROKE = Color3.fromRGB(70, 74, 84)
-local COL_TEXT = Color3.fromRGB(235, 236, 240)
-local COL_MUTED = Color3.fromRGB(140, 146, 158)
-local COL_DANGER = Color3.fromRGB(220, 80, 80)
+local COL_BG = C.Bg
+local COL_PANEL = C.Panel
+local COL_SLOT = C.Slot
+local COL_SLOT_EQ = C.SlotEquipped
+local COL_SLOT_SEL = C.SlotSelected
+local COL_STROKE = C.Stroke
+local COL_TEXT = C.Text
+local COL_MUTED = C.TextMuted
+local COL_DANGER = C.DangerBright
 
 local function corner(parent: Instance, r: number?)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 8)
-	c.Parent = parent
+	UiTheme.Corner(parent, r)
 end
 
 local function stroke(parent: Instance, color: Color3?, t: number?)
-	local s = Instance.new("UIStroke")
-	s.Color = color or COL_STROKE
-	s.Thickness = t or 1
-	s.Parent = parent
+	UiTheme.Stroke(parent, { color = color, thickness = t })
 end
 
--- Early ScreenGui: show boot error instead of blank HUD if remotes/require fail.
-local gui = Instance.new("ScreenGui")
-gui.Name = "GearUI"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 10
-gui.IgnoreGuiInset = true
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+local gui = UiTheme.ScreenGui({
+	name = "GearUI",
+	displayOrder = UiTheme.DisplayOrder.Panel,
+	zIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
 gui.Parent = playerGui
 
 local bootStatus = Instance.new("TextLabel")
@@ -79,10 +77,28 @@ end)
 local okCombat, CombatConfig = pcall(function()
 	return require(ReplicatedStorage.Shared.Config.CombatConfig)
 end)
+local okUpgrade, UpgradeDefs = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.UpgradeDefs)
+end)
+local okTooltip, ItemTooltip = pcall(function()
+	return require(ReplicatedStorage.Shared.UI.ItemTooltip)
+end)
+local okGlossary, GameGlossary = pcall(function()
+	return require(ReplicatedStorage.Shared.Config.GameGlossary)
+end)
+local okAbilityTip, AbilityTooltip = pcall(function()
+	return require(ReplicatedStorage.Shared.UI.AbilityTooltip)
+end)
+local okHoverTip, HoverTooltip = pcall(function()
+	return require(script.Parent.Parent.UI.HoverTooltip)
+end)
+local okToast, UiToast = pcall(function()
+	return require(script.Parent.Parent.UI.UiToast)
+end)
 local okIcon, ItemIcon = pcall(function()
 	return require(script.Parent.ItemIcon)
 end)
-if not (okSlots and okHotbar and okCombat and okIcon) then
+if not (okSlots and okHotbar and okCombat and okIcon and okUpgrade and okTooltip and okGlossary and okAbilityTip and okHoverTip and okToast) then
 	failBoot("GearUI config require failed — check Output")
 	return
 end
@@ -100,12 +116,56 @@ local UnequipSlot = remotes:WaitForChild("UnequipSlot") :: RemoteEvent
 local BindAbility = remotes:WaitForChild("BindAbility") :: RemoteEvent
 local UnbindHotbar = remotes:WaitForChild("UnbindHotbar") :: RemoteEvent
 local DiscardItem = remotes:WaitForChild("DiscardItem") :: RemoteEvent
+
+local tradeFolder = ReplicatedStorage:WaitForChild("TradeRemotes", 15)
+local OpenLootBox: RemoteEvent? = nil
+local LootBoxResult: RemoteEvent? = nil
+local TradeUI = {
+	OpenInvite = function()
+		UiToast.Show("Trade system not ready.", 2, "error")
+	end,
+	AddSelected = function(_uuid: string) end,
+	IsActive = function()
+		return false
+	end,
+}
+if tradeFolder then
+	local okTrade, tradeModule = pcall(function()
+		return require(script.Parent.TradeUI)
+	end)
+	if okTrade then
+		TradeUI = tradeModule
+	end
+	local openEv = tradeFolder:FindFirstChild("OpenLootBox")
+	local resultEv = tradeFolder:FindFirstChild("LootBoxResult")
+	if openEv and openEv:IsA("RemoteEvent") then
+		OpenLootBox = openEv
+	end
+	if resultEv and resultEv:IsA("RemoteEvent") then
+		LootBoxResult = resultEv
+	end
+else
+	warn("[GearUI] TradeRemotes missing — trade / lootbox open unavailable")
+end
+
 local InventoryUpdated = remotes:WaitForChild("InventoryUpdated") :: RemoteEvent
 local InstallWeaponPart = remotes:WaitForChild("InstallWeaponPart") :: RemoteEvent
 local RemoveWeaponPart = remotes:WaitForChild("RemoveWeaponPart") :: RemoteEvent
 local SocketGem = remotes:WaitForChild("SocketGem") :: RemoteEvent
 local UnsocketGem = remotes:WaitForChild("UnsocketGem") :: RemoteEvent
 local CreateWeaponFrame = remotes:WaitForChild("CreateWeaponFrame") :: RemoteEvent
+local AllocateStat = remotes:WaitForChild("AllocateStat") :: RemoteEvent
+
+local UpgradeItem: RemoteEvent? = nil
+task.spawn(function()
+	local meta = ReplicatedStorage:WaitForChild("MetaRemotes", 60)
+	if meta then
+		local ev = meta:FindFirstChild("UpgradeItem")
+		if ev and ev:IsA("RemoteEvent") then
+			UpgradeItem = ev
+		end
+	end
+end)
 
 type ActiveInfo = { abilityId: string, name: string, desc: string, sourceUuid: string, defId: string }
 
@@ -115,13 +175,28 @@ local snapshot = {
 	hotbar = {} :: { [number]: string? },
 	actives = {} :: { ActiveInfo },
 	stats = { level = 1, STR = 10, DEX = 10, VIT = 10, INT = 10 },
-	derived = { hp = 0, stamina = 0, defenceFromVit = 0, resistFromVit = 0, totalDefence = 0, totalResist = 0 },
+	derived = {
+		hp = 0,
+		stamina = 0,
+		defenceFromVit = 0,
+		resistFromVit = 0,
+		totalDefence = 0,
+		totalResist = 0,
+		synergyBand = "None",
+		synergyElement = nil,
+		synergyPerk = "",
+	},
 	resolvedMain = nil :: any,
+	premiumCurrency = 0,
+	gemPreserveUnsocketCost = 1,
+	xpProgress = nil :: any,
 }
 
 local invFilter = "All"
 local pendingInstallSlot: string? = nil
 local pendingConfirmAction: (() -> ())? = nil
+local gemUnsocketMode = false
+local pendingGemUnsocketUuid: string? = nil
 
 local FILTER_OPTIONS = {
 	{ id = "All", label = "All" },
@@ -143,11 +218,19 @@ local PRIMARY_COLORS = {
 	INT = Color3.fromRGB(200, 130, 255),
 }
 
+local SYNERGY_COLORS = {
+	None = COL_MUTED,
+	Pure = Color3.fromRGB(255, 180, 90),
+	Duality = Color3.fromRGB(120, 190, 255),
+	Harmony = Color3.fromRGB(200, 150, 255),
+	Unbound = Color3.fromRGB(220, 220, 230),
+}
+
 -- Confirm modal (gem unsocket etc.)
 local confirmOverlay = Instance.new("Frame")
 confirmOverlay.Name = "ConfirmOverlay"
 confirmOverlay.Size = UDim2.fromScale(1, 1)
-confirmOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+confirmOverlay.BackgroundColor3 = C.BgOverlay
 confirmOverlay.BackgroundTransparency = 0.45
 confirmOverlay.Visible = false
 confirmOverlay.ZIndex = 30
@@ -160,7 +243,7 @@ confirmBox.BackgroundColor3 = COL_PANEL
 confirmBox.BorderSizePixel = 0
 confirmBox.Parent = confirmOverlay
 corner(confirmBox, 10)
-stroke(confirmBox, Color3.fromRGB(90, 94, 104), 1.5)
+stroke(confirmBox, C.StrokeLight, 1.5)
 
 local confirmTitle = Instance.new("TextLabel")
 confirmTitle.Size = UDim2.new(1, -20, 0, 28)
@@ -210,24 +293,88 @@ confirmNo.Text = "Cancel"
 confirmNo.Parent = confirmBox
 corner(confirmNo, 6)
 
+local confirmPremium = Instance.new("TextButton")
+confirmPremium.Size = UDim2.fromOffset(94, 32)
+confirmPremium.Position = UDim2.new(0.5, -47, 1, -42)
+confirmPremium.BackgroundColor3 = C.Premium
+confirmPremium.BorderSizePixel = 0
+confirmPremium.Font = Enum.Font.GothamBold
+confirmPremium.TextSize = 11
+confirmPremium.TextColor3 = COL_TEXT
+confirmPremium.Text = "Safe (1)"
+confirmPremium.Visible = false
+confirmPremium.Parent = confirmBox
+corner(confirmPremium, 6)
+
+local DEFAULT_CONFIRM_SIZE = UDim2.fromOffset(320, 148)
+local GEM_CONFIRM_SIZE = UDim2.fromOffset(320, 168)
+
 local function hideConfirm()
 	confirmOverlay.Visible = false
 	pendingConfirmAction = nil
+	gemUnsocketMode = false
+	pendingGemUnsocketUuid = nil
+	confirmPremium.Visible = false
+	confirmBox.Size = DEFAULT_CONFIRM_SIZE
+	confirmYes.Text = "Confirm"
+	confirmYes.Position = UDim2.new(1, -252, 1, -42)
 end
 
 local function showConfirm(title: string, body: string, onYes: () -> ())
+	gemUnsocketMode = false
+	pendingGemUnsocketUuid = nil
+	confirmPremium.Visible = false
+	confirmBox.Size = DEFAULT_CONFIRM_SIZE
+	confirmYes.Text = "Confirm"
+	confirmYes.Position = UDim2.new(1, -252, 1, -42)
 	confirmTitle.Text = title
 	confirmBody.Text = body
 	pendingConfirmAction = onYes
 	confirmOverlay.Visible = true
 end
 
+local function showGemUnsocketConfirm(frameUuid: string)
+	gemUnsocketMode = true
+	pendingGemUnsocketUuid = frameUuid
+	pendingConfirmAction = nil
+	confirmBox.Size = GEM_CONFIRM_SIZE
+	confirmTitle.Text = "Unsocket Gem?"
+	local cost = snapshot.gemPreserveUnsocketCost or 1
+	local bal = snapshot.premiumCurrency or 0
+	confirmBody.Text = `Break: the gem is destroyed and the weapon becomes Neutral.\n\nSafe unsocket: spend {cost} premium currency ({bal} owned) — gem returns to your bag.`
+	confirmYes.Text = "Break Gem"
+	confirmYes.Position = UDim2.new(0, 10, 1, -42)
+	confirmPremium.Visible = true
+	confirmPremium.Text = `Safe ({cost})`
+	local canSafe = bal >= cost
+	confirmPremium.BackgroundColor3 = if canSafe then C.Premium else C.ButtonDisabled
+	confirmPremium.AutoButtonColor = canSafe
+	confirmPremium.Active = canSafe
+	confirmPremium.TextTransparency = if canSafe then 0 else 0.35
+	confirmOverlay.Visible = true
+end
+
 confirmYes.MouseButton1Click:Connect(function()
+	if gemUnsocketMode and pendingGemUnsocketUuid then
+		local uuid = pendingGemUnsocketUuid
+		hideConfirm()
+		UnsocketGem:FireServer(uuid, false)
+		return
+	end
 	local action = pendingConfirmAction
 	hideConfirm()
 	if action then
 		action()
 	end
+end)
+
+confirmPremium.MouseButton1Click:Connect(function()
+	if not gemUnsocketMode or not pendingGemUnsocketUuid then
+		return
+	end
+	local uuid = pendingGemUnsocketUuid
+	hideConfirm()
+	UnsocketGem:FireServer(uuid, true)
 end)
 
 confirmNo.MouseButton1Click:Connect(function()
@@ -267,13 +414,13 @@ local function suggestSlot(defId: string): string?
 		return hints[1]
 	end
 	local kind = def.kind
-	if kind == "ArmorHead" then
+	if kind == "Head" then
 		return "head"
-	elseif kind == "ArmorChest" then
+	elseif kind == "Chest" then
 		return "chest"
-	elseif kind == "ArmorHands" then
+	elseif kind == "Hands" then
 		return "hands"
-	elseif kind == "ArmorFeets" or kind == "ArmorFeet" then
+	elseif kind == "Feets" then
 		return "feets"
 	elseif kind == "Shield" or kind == "Focus" or kind == "Knot" or kind == "Quiver" then
 		return "off"
@@ -294,7 +441,7 @@ local function secondaryFromStats()
 	local resist = d.totalResist or d.resistFromVit or (vit * CombatConfig.KVitRes)
 	local dr = math.min(defence * CombatConfig.KDr, CombatConfig.DrCapPvp)
 	local statusPot = int_ * 0.5 + (d.passiveStatusPotency or 0)
-	local buffPot = int_ * 0.25
+	local buffPot = d.totalBuffPotency or (int_ * 0.25 + (d.passiveBuffPotency or 0))
 	return {
 		{ "HP", string.format("%d", math.floor(d.hp or 0)), Color3.fromRGB(100, 220, 130) },
 		{ "Stamina", string.format("%d", math.floor(d.stamina or 0)), Color3.fromRGB(240, 210, 80) },
@@ -312,7 +459,7 @@ end
 local root = Instance.new("Frame")
 root.Name = "Root"
 root.Size = UDim2.fromScale(1, 1)
-root.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+root.BackgroundColor3 = C.BgOverlay
 root.BackgroundTransparency = 0.5
 root.Visible = false
 root.Parent = gui
@@ -341,7 +488,7 @@ end
 local function makeHeader(parent: Frame, text: string, withClose: boolean?): (TextLabel, TextButton?)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, 0, 0, 36)
-	bar.BackgroundColor3 = Color3.fromRGB(22, 24, 28)
+	bar.BackgroundColor3 = C.BgElevated
 	bar.BackgroundTransparency = 0.2
 	bar.BorderSizePixel = 0
 	bar.Parent = parent
@@ -405,6 +552,35 @@ levelLabel.LayoutOrder = 0
 levelLabel.Text = "Level —"
 levelLabel.Parent = statsBody
 
+local xpBarBg = Instance.new("Frame")
+xpBarBg.Name = "XpBarBg"
+xpBarBg.Size = UDim2.new(1, 0, 0, 10)
+xpBarBg.BackgroundColor3 = COL_SLOT
+xpBarBg.BorderSizePixel = 0
+xpBarBg.LayoutOrder = 1
+xpBarBg.Parent = statsBody
+corner(xpBarBg, 4)
+
+local xpBarFill = Instance.new("Frame")
+xpBarFill.Name = "Fill"
+xpBarFill.Size = UDim2.fromScale(0, 1)
+xpBarFill.BackgroundColor3 = C.Accent
+xpBarFill.BorderSizePixel = 0
+xpBarFill.Parent = xpBarBg
+corner(xpBarFill, 4)
+
+local xpBarLabel = Instance.new("TextLabel")
+xpBarLabel.Name = "XpLabel"
+xpBarLabel.Size = UDim2.new(1, 0, 0, 14)
+xpBarLabel.BackgroundTransparency = 1
+xpBarLabel.Font = Enum.Font.Gotham
+xpBarLabel.TextSize = 10
+xpBarLabel.TextColor3 = COL_MUTED
+xpBarLabel.TextXAlignment = Enum.TextXAlignment.Left
+xpBarLabel.LayoutOrder = 2
+xpBarLabel.Text = "XP — / —"
+xpBarLabel.Parent = statsBody
+
 local primaryHeader = Instance.new("TextLabel")
 primaryHeader.Size = UDim2.new(1, 0, 0, 18)
 primaryHeader.BackgroundTransparency = 1
@@ -412,26 +588,95 @@ primaryHeader.Font = Enum.Font.GothamBold
 primaryHeader.TextSize = 11
 primaryHeader.TextColor3 = COL_MUTED
 primaryHeader.TextXAlignment = Enum.TextXAlignment.Left
-primaryHeader.LayoutOrder = 1
+primaryHeader.LayoutOrder = 3
 primaryHeader.Text = "PRIMARY"
 primaryHeader.Parent = statsBody
 
+local unspentLabel = Instance.new("TextLabel")
+unspentLabel.Size = UDim2.new(1, 0, 0, 18)
+unspentLabel.BackgroundTransparency = 1
+unspentLabel.Font = Enum.Font.GothamBold
+unspentLabel.TextSize = 11
+unspentLabel.TextColor3 = Color3.fromRGB(120, 200, 140)
+unspentLabel.TextXAlignment = Enum.TextXAlignment.Left
+unspentLabel.LayoutOrder = 4
+unspentLabel.Text = ""
+unspentLabel.Parent = statsBody
+
 local primaryLabels: { [string]: TextLabel } = {}
+local statPlusBtns: { [string]: TextButton } = {}
 for i, key in { "STR", "DEX", "VIT", "INT" } do
-	local row = Instance.new("TextLabel")
-	row.Size = UDim2.new(1, 0, 0, 26)
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, 0, 0, 30)
 	row.BackgroundColor3 = COL_SLOT
 	row.BorderSizePixel = 0
-	row.Font = Enum.Font.GothamBold
-	row.TextSize = 15
-	row.TextColor3 = PRIMARY_COLORS[key]
-	row.TextXAlignment = Enum.TextXAlignment.Left
-	row.LayoutOrder = 1 + i
-	row.Text = `  {key}  —`
+	row.LayoutOrder = 4 + i
 	row.Parent = statsBody
 	corner(row, 6)
-	primaryLabels[key] = row
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -40, 1, 0)
+	label.Position = UDim2.fromOffset(8, 0)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 15
+	label.TextColor3 = PRIMARY_COLORS[key]
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Text = `  {key}  —`
+	label.Parent = row
+	primaryLabels[key] = label
+
+	local plus = Instance.new("TextButton")
+	plus.Size = UDim2.fromOffset(28, 22)
+	plus.Position = UDim2.new(1, -34, 0.5, -11)
+	plus.BackgroundColor3 = C.SuccessDark
+	plus.BorderSizePixel = 0
+	plus.Font = Enum.Font.GothamBold
+	plus.TextSize = 16
+	plus.TextColor3 = Color3.fromRGB(240, 250, 240)
+	plus.Text = "+"
+	plus.Parent = row
+	corner(plus, 4)
+	statPlusBtns[key] = plus
+	plus.MouseButton1Click:Connect(function()
+		AllocateStat:FireServer(key)
+	end)
 end
+
+local synergyHeader = Instance.new("TextLabel")
+synergyHeader.Size = UDim2.new(1, 0, 0, 18)
+synergyHeader.BackgroundTransparency = 1
+synergyHeader.Font = Enum.Font.GothamBold
+synergyHeader.TextSize = 11
+synergyHeader.TextColor3 = COL_MUTED
+synergyHeader.TextXAlignment = Enum.TextXAlignment.Left
+synergyHeader.LayoutOrder = 20
+synergyHeader.Text = "SYNERGY"
+synergyHeader.Parent = statsBody
+
+local synergyBandLabel = Instance.new("TextLabel")
+synergyBandLabel.Size = UDim2.new(1, 0, 0, 24)
+synergyBandLabel.BackgroundTransparency = 1
+synergyBandLabel.Font = Enum.Font.GothamBold
+synergyBandLabel.TextSize = 14
+synergyBandLabel.TextColor3 = COL_MUTED
+synergyBandLabel.TextXAlignment = Enum.TextXAlignment.Left
+synergyBandLabel.LayoutOrder = 21
+synergyBandLabel.Text = "Band: None"
+synergyBandLabel.Parent = statsBody
+
+local synergyPerkLabel = Instance.new("TextLabel")
+synergyPerkLabel.Size = UDim2.new(1, 0, 0, 36)
+synergyPerkLabel.BackgroundTransparency = 1
+synergyPerkLabel.Font = Enum.Font.Gotham
+synergyPerkLabel.TextSize = 11
+synergyPerkLabel.TextColor3 = COL_MUTED
+synergyPerkLabel.TextXAlignment = Enum.TextXAlignment.Left
+synergyPerkLabel.TextYAlignment = Enum.TextYAlignment.Top
+synergyPerkLabel.TextWrapped = true
+synergyPerkLabel.LayoutOrder = 22
+synergyPerkLabel.Text = ""
+synergyPerkLabel.Parent = statsBody
 
 local secHeader = Instance.new("TextLabel")
 secHeader.Size = UDim2.new(1, 0, 0, 18)
@@ -440,7 +685,7 @@ secHeader.Font = Enum.Font.GothamBold
 secHeader.TextSize = 11
 secHeader.TextColor3 = COL_MUTED
 secHeader.TextXAlignment = Enum.TextXAlignment.Left
-secHeader.LayoutOrder = 20
+	secHeader.LayoutOrder = 30
 secHeader.Text = "SECONDARY"
 secHeader.Parent = statsBody
 
@@ -453,7 +698,7 @@ for i = 1, 9 do
 	row.TextSize = 12
 	row.TextColor3 = COL_TEXT
 	row.TextXAlignment = Enum.TextXAlignment.Left
-	row.LayoutOrder = 20 + i
+		row.LayoutOrder = 30 + i
 	row.Text = ""
 	row.Parent = statsBody
 	secondaryLabels[i] = row
@@ -491,7 +736,7 @@ local function makeGearSlot(slotId: string, anchor: UDim2, caption: string)
 	btn.AutoButtonColor = true
 	btn.Parent = wrap
 	corner(btn, 8)
-	stroke(btn, Color3.fromRGB(100, 104, 114))
+	stroke(btn, C.StrokeSlot)
 
 	local name = Instance.new("TextLabel")
 	name.Name = "ItemName"
@@ -551,7 +796,7 @@ local vp = Instance.new("ViewportFrame")
 vp.Size = UDim2.new(0.56, 0, 0.92, 0)
 vp.Position = UDim2.new(0.5, 0, 0.5, 0)
 vp.AnchorPoint = Vector2.new(0.5, 0.5)
-vp.BackgroundColor3 = Color3.fromRGB(36, 38, 44)
+vp.BackgroundColor3 = C.Viewport
 vp.BorderSizePixel = 0
 vp.Parent = dollArea
 corner(vp, 8)
@@ -645,6 +890,24 @@ for i = 1, HotbarConfig.SlotCount do
 	corner(btn, 6)
 	stroke(btn)
 	skillButtons[i] = btn
+	btn.MouseEnter:Connect(function()
+		local slotId = snapshot.hotbar[i]
+		if not slotId then
+			return
+		end
+		for _, a in snapshot.actives do
+			if a.abilityId == slotId then
+				local title, body = AbilityTooltip.Build(slotId, { name = a.name, desc = a.desc })
+				HoverTooltip.show(title, body, btn)
+				return
+			end
+		end
+		local title, body = AbilityTooltip.Build(slotId, nil)
+		HoverTooltip.show(title, body, btn)
+	end)
+	btn.MouseLeave:Connect(function()
+		HoverTooltip.hide()
+	end)
 	btn.MouseButton1Click:Connect(function()
 		if selectedAbility then
 			BindAbility:FireServer(selectedAbility, i)
@@ -741,18 +1004,116 @@ detailIconHost.Parent = detail
 corner(detailIconHost, 8)
 stroke(detailIconHost, Color3.fromRGB(70, 74, 82))
 
+local detailScroll = Instance.new("ScrollingFrame")
+detailScroll.Name = "DetailScroll"
+detailScroll.Size = UDim2.new(1, -120, 1, -120)
+detailScroll.Position = UDim2.fromOffset(10, 40)
+detailScroll.BackgroundTransparency = 1
+detailScroll.BorderSizePixel = 0
+detailScroll.ScrollBarThickness = 4
+detailScroll.CanvasSize = UDim2.fromOffset(0, 0)
+detailScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+detailScroll.Parent = detail
+
 local detailDesc = Instance.new("TextLabel")
-detailDesc.Size = UDim2.new(1, -120, 1, -120)
-detailDesc.Position = UDim2.fromOffset(10, 40)
+detailDesc.Size = UDim2.new(1, -4, 0, 0)
+detailDesc.AutomaticSize = Enum.AutomaticSize.Y
 detailDesc.BackgroundTransparency = 1
 detailDesc.Font = Enum.Font.Gotham
-detailDesc.TextSize = 12
+detailDesc.TextSize = 11
 detailDesc.TextColor3 = COL_MUTED
 detailDesc.TextXAlignment = Enum.TextXAlignment.Left
 detailDesc.TextYAlignment = Enum.TextYAlignment.Top
 detailDesc.TextWrapped = true
+detailDesc.RichText = false
 detailDesc.Text = "Click an inventory slot to inspect."
-detailDesc.Parent = detail
+detailDesc.Parent = detailScroll
+
+local glossaryBtn = Instance.new("TextButton")
+glossaryBtn.Size = UDim2.fromOffset(72, 24)
+glossaryBtn.Position = UDim2.new(1, -178, 0, 10)
+glossaryBtn.BackgroundColor3 = Color3.fromRGB(52, 58, 72)
+glossaryBtn.BorderSizePixel = 0
+glossaryBtn.Font = Enum.Font.GothamBold
+glossaryBtn.TextSize = 11
+glossaryBtn.TextColor3 = COL_TEXT
+glossaryBtn.Text = "Glossary"
+glossaryBtn.Parent = detail
+corner(glossaryBtn, 5)
+
+local glossaryPanel = Instance.new("Frame")
+glossaryPanel.Name = "GlossaryPanel"
+glossaryPanel.Size = UDim2.new(1, -24, 1, -24)
+glossaryPanel.Position = UDim2.fromOffset(12, 12)
+glossaryPanel.BackgroundColor3 = Color3.fromRGB(20, 22, 28)
+glossaryPanel.Visible = false
+glossaryPanel.ZIndex = 30
+glossaryPanel.Parent = root
+corner(glossaryPanel, 10)
+stroke(glossaryPanel, Color3.fromRGB(80, 90, 110), 1)
+
+local glossaryTitle = Instance.new("TextLabel")
+glossaryTitle.Size = UDim2.new(1, -80, 0, 28)
+glossaryTitle.Position = UDim2.fromOffset(12, 8)
+glossaryTitle.BackgroundTransparency = 1
+glossaryTitle.Font = Enum.Font.GothamBold
+glossaryTitle.TextSize = 16
+glossaryTitle.TextColor3 = COL_TEXT
+glossaryTitle.TextXAlignment = Enum.TextXAlignment.Left
+glossaryTitle.Text = "Glossary"
+glossaryTitle.ZIndex = 31
+glossaryTitle.Parent = glossaryPanel
+
+local glossaryClose = Instance.new("TextButton")
+glossaryClose.Size = UDim2.fromOffset(64, 26)
+glossaryClose.Position = UDim2.new(1, -76, 0, 8)
+glossaryClose.BackgroundColor3 = Color3.fromRGB(60, 64, 74)
+glossaryClose.Font = Enum.Font.GothamBold
+glossaryClose.TextSize = 12
+glossaryClose.TextColor3 = COL_TEXT
+glossaryClose.Text = "Close"
+glossaryClose.ZIndex = 31
+glossaryClose.Parent = glossaryPanel
+corner(glossaryClose, 6)
+
+local glossaryScroll = Instance.new("ScrollingFrame")
+glossaryScroll.Size = UDim2.new(1, -20, 1, -48)
+glossaryScroll.Position = UDim2.fromOffset(10, 40)
+glossaryScroll.BackgroundTransparency = 1
+glossaryScroll.BorderSizePixel = 0
+glossaryScroll.ScrollBarThickness = 5
+glossaryScroll.CanvasSize = UDim2.fromOffset(0, 0)
+glossaryScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+glossaryScroll.ZIndex = 31
+glossaryScroll.Parent = glossaryPanel
+
+local glossaryBody = Instance.new("TextLabel")
+glossaryBody.Size = UDim2.new(1, -8, 0, 0)
+glossaryBody.AutomaticSize = Enum.AutomaticSize.Y
+glossaryBody.BackgroundTransparency = 1
+glossaryBody.Font = Enum.Font.Gotham
+glossaryBody.TextSize = 11
+glossaryBody.TextColor3 = COL_MUTED
+glossaryBody.TextXAlignment = Enum.TextXAlignment.Left
+glossaryBody.TextYAlignment = Enum.TextYAlignment.Top
+glossaryBody.TextWrapped = true
+glossaryBody.Text = GameGlossary.FormatAll()
+glossaryBody.ZIndex = 31
+glossaryBody.Parent = glossaryScroll
+
+local glossaryOpen = false
+local function setGlossaryOpen(state: boolean)
+	glossaryOpen = state
+	glossaryPanel.Visible = state
+end
+
+glossaryBtn.MouseButton1Click:Connect(function()
+	glossaryBody.Text = GameGlossary.FormatAll()
+	setGlossaryOpen(not glossaryOpen)
+end)
+glossaryClose.MouseButton1Click:Connect(function()
+	setGlossaryOpen(false)
+end)
 
 local equipBtn = Instance.new("TextButton")
 equipBtn.Size = UDim2.new(1, -20, 0, 32)
@@ -780,10 +1141,52 @@ discardBtn.AutoButtonColor = true
 discardBtn.Parent = detail
 corner(discardBtn, 6)
 
+local upgradeBtn = Instance.new("TextButton")
+upgradeBtn.Size = UDim2.new(1, -20, 0, 32)
+upgradeBtn.Position = UDim2.new(0, 10, 1, -116)
+upgradeBtn.BackgroundColor3 = Color3.fromRGB(90, 120, 200)
+upgradeBtn.BorderSizePixel = 0
+upgradeBtn.Font = Enum.Font.GothamBold
+upgradeBtn.TextSize = 13
+upgradeBtn.TextColor3 = COL_TEXT
+upgradeBtn.Text = "Upgrade Blade"
+upgradeBtn.AutoButtonColor = true
+upgradeBtn.Visible = false
+upgradeBtn.Parent = detail
+corner(upgradeBtn, 6)
+
+local openBoxBtn = Instance.new("TextButton")
+openBoxBtn.Size = UDim2.new(1, -20, 0, 32)
+openBoxBtn.Position = UDim2.new(0, 10, 1, -154)
+openBoxBtn.BackgroundColor3 = C.Warning
+openBoxBtn.BorderSizePixel = 0
+openBoxBtn.Font = Enum.Font.GothamBold
+openBoxBtn.TextSize = 14
+openBoxBtn.TextColor3 = COL_TEXT
+openBoxBtn.Text = "Open Lootbox"
+openBoxBtn.AutoButtonColor = true
+openBoxBtn.Visible = false
+openBoxBtn.Parent = detail
+corner(openBoxBtn, 6)
+
+local tradeBtn = Instance.new("TextButton")
+tradeBtn.Size = UDim2.new(1, -20, 0, 32)
+tradeBtn.Position = UDim2.new(0, 10, 1, -192)
+tradeBtn.BackgroundColor3 = C.AccentSoft
+tradeBtn.BorderSizePixel = 0
+tradeBtn.Font = Enum.Font.GothamBold
+tradeBtn.TextSize = 14
+tradeBtn.TextColor3 = COL_TEXT
+tradeBtn.Text = "Trade…"
+tradeBtn.AutoButtonColor = true
+tradeBtn.Visible = false
+tradeBtn.Parent = detail
+corner(tradeBtn, 6)
+
 local assemblyPanel = Instance.new("Frame")
 assemblyPanel.Name = "AssemblyPanel"
 assemblyPanel.Size = UDim2.new(1, -20, 0, 108)
-assemblyPanel.Position = UDim2.new(0, 10, 1, -188)
+assemblyPanel.Position = UDim2.new(0, 10, 1, -226)
 assemblyPanel.BackgroundColor3 = Color3.fromRGB(32, 34, 40)
 assemblyPanel.BorderSizePixel = 0
 assemblyPanel.Visible = false
@@ -909,13 +1312,7 @@ unsocketBtn.MouseButton1Click:Connect(function()
 	if not selectedUuid then
 		return
 	end
-	showConfirm(
-		"Destroy Gem?",
-		"Unsocketing permanently destroys the gem. The weapon will become Neutral until a new gem is socketed.",
-		function()
-			UnsocketGem:FireServer(selectedUuid)
-		end
-	)
+	showGemUnsocketConfirm(selectedUuid)
 end)
 
 createFrameBtn.MouseButton1Click:Connect(function()
@@ -950,6 +1347,72 @@ discardBtn.MouseButton1Click:Connect(function()
 	end
 	DiscardItem:FireServer(selectedUuid)
 	selectedUuid = nil
+end)
+
+openBoxBtn.MouseButton1Click:Connect(function()
+	if not selectedUuid then
+		return
+	end
+	if not OpenLootBox then
+		UiToast.Show("Lootbox open unavailable.", 2, "error")
+		return
+	end
+	OpenLootBox:FireServer(selectedUuid)
+end)
+
+local LOOTBOX_ERRORS = {
+	NoItem = "Lootbox not found.",
+	NotLootBox = "Not a lootbox.",
+	BadPool = "Invalid loot pool.",
+	Installed = "Remove installed parts first.",
+	Equipped = "Unequip the lootbox first.",
+	EmptyRoll = "Loot pool is empty.",
+	RemoveFailed = "Could not consume lootbox.",
+	GrantFailed = "Could not grant reward.",
+}
+if LootBoxResult then
+	LootBoxResult.OnClientEvent:Connect(function(result: any)
+		if typeof(result) ~= "table" then
+			return
+		end
+		if result.ok then
+			local rewardName = "item"
+			if typeof(result.reward) == "table" and typeof(result.reward.defId) == "string" then
+				local rewardDef = ItemDefs.Get(result.reward.defId)
+				rewardName = if rewardDef and rewardDef.name then rewardDef.name else result.reward.defId
+			end
+			UiToast.Show(`Opened! Got {rewardName}`, 3, "success")
+			selectedUuid = nil
+			refreshDetail()
+		else
+			local reason = if typeof(result.reason) == "string" then result.reason else "Error"
+			local msg = LOOTBOX_ERRORS[reason] or reason
+			UiToast.Show(msg, 2.5, "error")
+			detailDesc.Text = msg
+		end
+	end)
+end
+
+tradeBtn.MouseButton1Click:Connect(function()
+	if not selectedUuid then
+		return
+	end
+	TradeUI.OpenInvite(selectedUuid)
+end)
+
+upgradeBtn.MouseButton1Click:Connect(function()
+	if not selectedUuid then
+		return
+	end
+	if not PlaceRuntime.IsLobby() then
+		UiToast.Show("Upgrades are lobby-only.", 2, "warn")
+		return
+	end
+	if not UpgradeItem then
+		UiToast.Show("Upgrade service not ready.", 2, "error")
+		return
+	end
+	UpgradeItem:FireServer(selectedUuid)
 end)
 
 -- ========== REFRESH ==========
@@ -996,12 +1459,55 @@ end
 local function refreshStats()
 	local s = snapshot.stats
 	levelLabel.Text = `Level {s.level or 1}`
+	local xp = snapshot.xpProgress
+	if typeof(xp) == "table" and typeof(xp.xpToNext) == "number" and xp.xpToNext > 0 then
+		local into = math.max(0, math.floor(xp.xpIntoLevel or 0))
+		local need = math.max(1, math.floor(xp.xpToNext))
+		xpBarFill.Size = UDim2.fromScale(math.clamp(into / need, 0, 1), 1)
+		xpBarLabel.Text = `XP {into} / {need}`
+		xpBarBg.Visible = true
+		xpBarLabel.Visible = true
+	elseif typeof(xp) == "table" and (xp.xpToNext or 0) == 0 then
+		xpBarFill.Size = UDim2.fromScale(1, 1)
+		xpBarLabel.Text = "MAX LEVEL"
+		xpBarBg.Visible = true
+		xpBarLabel.Visible = true
+	else
+		xpBarBg.Visible = false
+		xpBarLabel.Visible = false
+	end
+	local unspent = if typeof(s.unspent) == "number" then s.unspent else 0
+	if unspent > 0 then
+		unspentLabel.Visible = true
+		unspentLabel.Text = `{unspent} stat point{if unspent == 1 then "" else "s"} to spend`
+	else
+		unspentLabel.Visible = false
+		unspentLabel.Text = ""
+	end
 	for _, key in { "STR", "DEX", "VIT", "INT" } do
 		local row = primaryLabels[key]
+		local plus = statPlusBtns[key]
 		if row then
 			row.Text = `  {key}   {s[key] or 0}`
 		end
+		if plus then
+			plus.Visible = unspent > 0
+			plus.BackgroundColor3 = if unspent > 0 then C.SuccessDark else Color3.fromRGB(60, 60, 68)
+		end
 	end
+	local d = snapshot.derived
+	local band = (d and d.synergyBand) or "None"
+	local bandColor = SYNERGY_COLORS[band] or COL_MUTED
+	local bandText = band
+	if band == "Pure" and d.synergyElement then
+		bandText = `Pure ({d.synergyElement})`
+	elseif (band == "Duality" or band == "Harmony") and d.synergyElements then
+		bandText = `{band} ({table.concat(d.synergyElements, " · ")})`
+	end
+	synergyBandLabel.Text = `Band: {bandText}`
+	synergyBandLabel.TextColor3 = bandColor
+	synergyPerkLabel.Text = (d and d.synergyPerk) or ""
+	synergyPerkLabel.TextColor3 = if band == "None" then COL_MUTED else Color3.fromRGB(170, 175, 190)
 	local secs = secondaryFromStats()
 	for i, row in secondaryLabels do
 		local entry = secs[i]
@@ -1057,6 +1563,9 @@ refreshDetail = function()
 		detailDesc.Text = "Click an inventory slot to inspect."
 		ItemIcon.Clear(detailIconHost)
 		assemblyPanel.Visible = false
+		upgradeBtn.Visible = false
+		openBoxBtn.Visible = false
+		tradeBtn.Visible = false
 		return
 	end
 	local itemData = nil
@@ -1069,27 +1578,42 @@ refreshDetail = function()
 	local defId = itemData and itemData.defId
 	local def = defId and ItemDefs.Get(defId)
 	local isFrame = defId == "weapon_frame"
+	local upgradeLevel = if itemData and typeof((itemData :: any).upgradeLevel) == "number"
+		then (itemData :: any).upgradeLevel
+		else 0
+	local canUpgrade = def and def.kind == "WeaponBlade"
+	local isLootBox = def and def.kind == "LootBox"
+	upgradeBtn.Visible = canUpgrade == true and not isLootBox and PlaceRuntime.IsLobby()
+	openBoxBtn.Visible = isLootBox == true
+	tradeBtn.Visible = isLootBox == true and def.tradeable ~= false
+	equipBtn.Visible = not isLootBox
+	if canUpgrade then
+		local cost = UpgradeDefs.CostPremiumPerLevel
+		local maxLvl = UpgradeDefs.MaxLevel
+		local pct = math.floor(UpgradeDefs.DamagePctPerLevel * 100 + 0.5)
+		if upgradeLevel >= maxLvl then
+			upgradeBtn.Text = `+{upgradeLevel} MAX (+{pct}%/lvl applied)`
+			upgradeBtn.BackgroundColor3 = Color3.fromRGB(70, 74, 82)
+		else
+			upgradeBtn.Text = `Upgrade +{upgradeLevel}→{upgradeLevel + 1}  ({cost} premium, +{pct}% DMG)`
+			upgradeBtn.BackgroundColor3 = Color3.fromRGB(90, 120, 200)
+		end
+	end
 	assemblyPanel.Visible = isFrame
 	detailTitle.Text = if isFrame and snapshot.resolvedMain and selectedUuid == snapshot.loadout.main
 		then (snapshot.resolvedMain.displayName or "Weapon Frame")
 		else (def and def.name or (defId or "?"))
-	local lines = {}
-	if def then
-		table.insert(lines, def.kind or "")
-		if def.element then
-			table.insert(lines, "Element: " .. tostring(def.element))
-		end
-		if isFrame and snapshot.resolvedMain and selectedUuid == snapshot.loadout.main then
-			local rm = snapshot.resolvedMain
-			table.insert(lines, "")
-			table.insert(lines, `DMG: {rm.baseDamage} · Element: {rm.element}`)
-			table.insert(lines, `AS mult: {string.format("%.2f", rm.attackSpeedMult or 1)}`)
-		end
-		if def.desc then
-			table.insert(lines, "")
-			table.insert(lines, def.desc)
-		end
-		if isFrame and itemData and itemData.parts then
+
+	local isMainEquipped = selectedUuid ~= nil and snapshot.loadout.main == selectedUuid
+	detailDesc.Text = ItemTooltip.Build({
+		defId = defId,
+		def = def,
+		itemData = itemData,
+		resolvedMain = if isFrame and isMainEquipped then snapshot.resolvedMain else nil,
+		isEquippedMain = isMainEquipped,
+	})
+
+	if isFrame and itemData and itemData.parts then
 			for _, slotName in { "handle", "blade", "pommel" } do
 				local partUuid = (itemData.parts :: any)[slotName]
 				local partName = "(empty)"
@@ -1118,17 +1642,7 @@ refreshDetail = function()
 				end
 			end
 			gemBtn.Text = "GEM\n" .. shortName(gemName, 10)
-		end
-		if isEquipped(selectedUuid) then
-			table.insert(lines, "")
-			table.insert(lines, "[Equipped]")
-		end
 	end
-	if pendingInstallSlot then
-		table.insert(lines, "")
-		table.insert(lines, `[Select part for: {pendingInstallSlot}]`)
-	end
-	detailDesc.Text = table.concat(lines, "\n")
 	if defId then
 		ItemIcon.Mount(detailIconHost, defId, { zIndex = 2, yawDeg = 38, pitchDeg = -20, distanceMul = 1.7 })
 	else
@@ -1167,6 +1681,13 @@ refreshSkills = function()
 		chip.LayoutOrder = i
 		chip.Parent = abilityStrip
 		corner(chip, 4)
+		chip.MouseEnter:Connect(function()
+			local title, body = AbilityTooltip.Build(a.abilityId, { name = a.name, desc = a.desc })
+			HoverTooltip.show(title, body, chip)
+		end)
+		chip.MouseLeave:Connect(function()
+			HoverTooltip.hide()
+		end)
 		chip.MouseButton1Click:Connect(function()
 			selectedAbility = if selectedAbility == a.abilityId then nil else a.abilityId
 			selectedUuid = nil
@@ -1242,7 +1763,8 @@ refreshInventory = function()
 					pendingInstallSlot = nil
 					return
 				end
-				if item.defId == "ElementGem" then
+				local gemDef = ItemDefs.Get(item.defId)
+				if gemDef and gemDef.kind == "ElementGem" then
 					if selectedUuid then
 						for _, it in snapshot.items do
 							if it.uuid == selectedUuid and it.defId == "weapon_frame" then
@@ -1256,7 +1778,11 @@ refreshInventory = function()
 						return
 					end
 				end
-				selectedUuid = if selectedUuid == item.uuid then nil else item.uuid
+				local newSelected = if selectedUuid == item.uuid then nil else item.uuid
+				selectedUuid = newSelected
+				if newSelected and TradeUI.IsActive() then
+					TradeUI.AddSelected(newSelected)
+				end
 				selectedAbility = nil
 				refreshInventory()
 				refreshGear()
@@ -1311,6 +1837,15 @@ local function applySnapshot(data: any)
 		snapshot.derived = data.derived
 	end
 	snapshot.resolvedMain = data.resolvedMain
+	if typeof(data.premiumCurrency) == "number" then
+		snapshot.premiumCurrency = data.premiumCurrency
+	end
+	if typeof(data.gemPreserveUnsocketCost) == "number" then
+		snapshot.gemPreserveUnsocketCost = data.gemPreserveUnsocketCost
+	end
+	if typeof(data.xpProgress) == "table" then
+		snapshot.xpProgress = data.xpProgress
+	end
 	if selectedUuid then
 		local found = false
 		for _, item in snapshot.items do
@@ -1335,6 +1870,9 @@ end
 local function setOpen(state: boolean)
 	open = state
 	root.Visible = open
+	if not open then
+		setGlossaryOpen(false)
+	end
 	if open then
 		refreshPreview()
 		refreshStats()
@@ -1379,7 +1917,16 @@ UserInputService.InputBegan:Connect(function(input, _gp)
 		setOpen(not open)
 		return
 	end
+	if input.KeyCode == Enum.KeyCode.G and open then
+		glossaryBody.Text = GameGlossary.FormatAll()
+		setGlossaryOpen(not glossaryOpen)
+		return
+	end
 	if input.KeyCode == Enum.KeyCode.Escape and open then
+		if glossaryOpen then
+			setGlossaryOpen(false)
+			return
+		end
 		setOpen(false)
 	end
 end)

@@ -204,8 +204,8 @@ local BLADES = {
 		familyPerk = "Defence Shred on hit (light)",
 		bladeDamageMult = 1.0,
 		meshKey = "Mace1H_Blade",
-		abilities = { "strike_weaponactive" },
-		desc = "1H Mace · single-target crush",
+		abilities = { "burst_weaponactive" },
+		desc = "1H Mace · self Fortify burst (tank)",
 	},
 	{
 		id = "b_mace_aoe",
@@ -324,8 +324,8 @@ local BLADES = {
 		familyPerk = "+Buff Potency · cone LA",
 		bladeDamageMult = 1.0,
 		meshKey = "Scepter_Blade",
-		abilities = { "bolt_weaponactive" },
-		desc = "1H Scepter · single-target ray",
+		abilities = { "heal_weaponactive", "hot_weaponactive" },
+		desc = "1H Scepter · self heal + HoT",
 	},
 	{
 		id = "b_scepter_aoe",
@@ -338,8 +338,8 @@ local BLADES = {
 		familyPerk = "+Buff Potency · cone LA",
 		bladeDamageMult = 0.98,
 		meshKey = "Scepter_Blade",
-		abilities = { "cone_weaponactive" },
-		desc = "1H Scepter · AoE radiant sweep",
+		abilities = { "mend_weaponactive", "salve_weaponactive" },
+		desc = "1H Scepter · ally heal + cone ally heal",
 	},
 	{
 		id = "b_scepter_st_r",
@@ -352,8 +352,8 @@ local BLADES = {
 		familyPerk = "+Buff Potency · cone LA",
 		bladeDamageMult = 1.05,
 		meshKey = "Scepter_Blade_Rare",
-		abilities = { "bolt_r_weaponactive", "potency_weaponpassive" },
-		desc = "1H Scepter · rare ray + potency",
+		abilities = { "fortify_weaponactive", "well_weaponactive", "buff_weaponpassive" },
+		desc = "1H Scepter · rare Fortify + circle ally heal",
 	},
 	{
 		id = "b_scepter_aoe_r",
@@ -366,8 +366,8 @@ local BLADES = {
 		familyPerk = "+Buff Potency · cone LA",
 		bladeDamageMult = 1.03,
 		meshKey = "Scepter_Blade_Rare",
-		abilities = { "cone_r_weaponactive", "status_weaponpassive" },
-		desc = "1H Scepter · rare AoE + LA status proc",
+		abilities = { "frenzy_weaponactive", "renew_weaponactive", "buff_weaponpassive" },
+		desc = "1H Scepter · rare Frenzy + ally HoT",
 	},
 
 	-- ═══════════════════════════════════════════════════════════════════════
@@ -807,6 +807,13 @@ function BladeDefs.ValidateBlade(blade: any): (boolean, string?)
 	local active, passive = countAbilities(blade.abilities)
 	local total = active + passive
 	local is2H = BladeDefs.IsTwoHandHandle(blade.handleType)
+
+	if rarity == "BossExclusive" then
+		if active > 3 or passive > 2 then
+			return false, "BossAbilityCapExceeded"
+		end
+		return true, nil
+	end
 
 	if is2H then
 		if active > 2 or passive > 2 then

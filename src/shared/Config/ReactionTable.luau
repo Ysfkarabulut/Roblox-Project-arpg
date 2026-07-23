@@ -14,6 +14,8 @@ export type ReactionDef = {
 	burstFactor: number?,
 	outputStatus: string?,
 	outputDuration: number?,
+	outputDurationFrom: ("maxInputs" | "minInputs")?,
+	outputParams: { [string]: any }?,
 	outputDpsFactor: number?, -- vs ignite dps etc.
 	chain: ("Shock" | "Poisoned")?,
 }
@@ -25,11 +27,11 @@ ReactionTable.List = {
 	{ id = "Chilled", a = "Wet", b = "Windy", kind = "Status", outputStatus = "Chilled", outputDuration = 1.5 },
 	{ id = "Thaw", a = "Chilled", b = "Ignite", kind = "Status", outputStatus = "Thaw", outputDuration = 2 },
 	{ id = "Cauterize", a = "Bleed", b = "Ignite", kind = "Hybrid", burstFrom = "Bleed", burstFactor = 0.75, outputStatus = "Cauterize", outputDuration = 3, outputDpsFactor = 1 },
-	{ id = "Blight", a = "Bleed", b = "Poisoned", kind = "Status", outputStatus = "Blight", outputDuration = 8, outputDpsFactor = 2 },
-	{ id = "Grounded", a = "Windy", b = "Slow", kind = "Status", outputStatus = "Grounded", outputDuration = 2 },
+	{ id = "Blight", a = "Bleed", b = "Poisoned", kind = "Status", outputStatus = "Blight", outputDurationFrom = "maxInputs", outputDpsFactor = 2 },
+	{ id = "Grounded", a = "Windy", b = "Slow", kind = "Status", outputStatus = "Grounded", outputDurationFrom = "maxInputs", outputParams = { slowPct = 80 } },
 	{ id = "Contamination", a = "Wet", b = "Poisoned", kind = "Chain", chain = "Poisoned" },
 	{ id = "WildFire", a = "Windy", b = "Ignite", kind = "Status", outputStatus = "WildFire", outputDuration = 3, outputDpsFactor = 1.5 },
-	{ id = "CausticBurn", a = "Ignite", b = "Poisoned", kind = "Status", outputStatus = "CausticBurn", outputDuration = 4, outputDpsFactor = 2 },
+	{ id = "CausticBurn", a = "Ignite", b = "Poisoned", kind = "Status", outputStatus = "CausticBurn", outputDurationFrom = "minInputs", outputDpsFactor = 2 },
 } :: { ReactionDef }
 
 function ReactionTable.FindPair(idA: string, idB: string): ReactionDef?

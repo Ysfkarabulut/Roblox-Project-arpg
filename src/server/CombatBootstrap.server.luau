@@ -6,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
+local PlaceRuntime = require(ReplicatedStorage.Shared.Config.PlaceRuntime)
+
 local AbilityService = require(script.Parent.Combat.AbilityService)
 local LightAttackService = require(script.Parent.Combat.LightAttackService)
 local DamageService = require(script.Parent.Combat.DamageService)
@@ -17,6 +19,9 @@ local ParryService = require(script.Parent.Combat.ParryService)
 local StaminaService = require(script.Parent.Combat.StaminaService)
 local WeaponVisualService = require(script.Parent.Combat.WeaponVisualService)
 local StatusService = require(script.Parent.Combat.StatusService)
+local CombatPressureService = require(script.Parent.Combat.CombatPressureService)
+local PressureTypes = require(ReplicatedStorage.Shared.Combat.PressureTypes)
+local NameplateService = require(script.Parent.Combat.NameplateService)
 local CombatConfig = require(ReplicatedStorage.Shared.Config.CombatConfig)
 
 local remotesFolder = Instance.new("Folder")
@@ -39,7 +44,15 @@ local CombatNotify = remoteEvent("CombatNotify")
 local StaminaUpdate = remoteEvent("StaminaUpdate")
 local ReactionFx = remoteEvent("ReactionFx")
 
-DummyService.Ensure()
+if PlaceRuntime.IsLobby() then
+	DummyService.Ensure()
+end
+
+StatusService.SetOnExpire(function(entity: Instance, statusId: string)
+	if PressureTypes.IsHardCc(statusId) then
+		CombatPressureService.OnHardCcEnded(entity)
+	end
+end)
 
 ReactionResolver.Bind({
 	dealBurst = function(entity, amount, reactionId, sourceUserId)
@@ -180,6 +193,7 @@ RunService.Heartbeat:Connect(function(dt)
 		ParryService.Tick(player, dt)
 		StaminaService.Tick(player.UserId, dt, defending, sprinting)
 	end
+	NameplateService.Tick(dt)
 end)
 
 task.spawn(function()
@@ -203,6 +217,8 @@ Players.PlayerRemoving:Connect(function(player)
 	GuardService.Clear(player.UserId)
 	ParryService.Clear(player.UserId)
 	StaminaService.Clear(player.UserId)
+	local CrossbowReloadService = require(script.Parent.Combat.CrossbowReloadService)
+	CrossbowReloadService.Clear(player.UserId)
 end)
 
 print("[CombatBootstrap] LA combo + dodge/guard/parry + reactions ready")

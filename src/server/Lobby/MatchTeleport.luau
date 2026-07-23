@@ -1,6 +1,6 @@
 --[[
 	MatchTeleport — maç place'ine TeleportService.
-	PlaceId 0 ise Studio stub (log only).
+	PlaceId 0 ise Studio stub (aynı place, offset arena).
 ]]
 
 local TeleportService = game:GetService("TeleportService")
@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
 
 local PlaceConfig = require(game.ReplicatedStorage.Shared.Config.PlaceConfig)
+local PlaceRuntime = require(game.ReplicatedStorage.Shared.Config.PlaceRuntime)
+local BossEncounterService = require(script.Parent.Parent.Boss.BossEncounterService)
 
 export type MatchPayload = {
 	matchId: string,
@@ -56,6 +58,25 @@ function MatchTeleport.StartMatch(payload: MatchPayload)
 			#players,
 			HttpService:JSONEncode(teleportData)
 		))
+		if placeKey == "PveBossEye" then
+			local userIds = {}
+			for _, p in players do
+				table.insert(userIds, p.UserId)
+			end
+			BossEncounterService.Start({
+				bossId = "eye",
+				partyUserIds = userIds,
+				partySize = math.clamp(#userIds, 1, 3),
+			})
+		if placeKey == "Pvp1v1" or placeKey == "Pvp2v2" or placeKey == "Pvp3v3" then
+			local PvpMatchService = require(script.Parent.Parent.Pvp.PvpMatchService)
+			PvpMatchService.Start({
+				matchId = payload.matchId,
+				queueId = payload.queueId,
+				bracket = PlaceRuntime.BracketFromPlaceKey(placeKey),
+				teams = payload.teams,
+			})
+		end
 		return
 	end
 

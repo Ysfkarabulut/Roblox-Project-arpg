@@ -23,6 +23,7 @@ export type ItemKind =
 	| "WeaponPommel"
 	| "ElementGem"
 	| "WeaponFrame"
+	| "LootBox"
 
 export type ElementTag =
 	"Fire"
@@ -74,6 +75,9 @@ export type ItemDef = {
 	familyPerk: string?,
 	onHitAffix: string?, -- nil = yok
 	rarity: ("Common" | "Rare" | "BossExclusive")?,
+	lootBoxPoolId: string?, -- LootBox only
+	bossId: string?, -- boss lootbox linkage
+	tradeable: boolean?, -- default false except LootBox
 	abilities: { AbilitySlot }?,
 	desc: string?,
 	-- Modular part fields

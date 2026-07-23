@@ -175,8 +175,19 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 	return true, nil
 end
 
-Players.PlayerRemoving:Connect(function(player)
-	loadouts[player.UserId] = nil
-end)
+function LoadoutService.Import(userId: number, loadout: { [string]: string? })
+	loadouts[userId] = {
+		main = loadout.main,
+		off = loadout.off,
+		head = loadout.head,
+		chest = loadout.chest,
+		hands = loadout.hands,
+		feets = loadout.feets,
+	}
+end
+
+function LoadoutService.Clear(userId: number)
+	loadouts[userId] = nil
+end
 
 return LoadoutService

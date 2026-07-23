@@ -4,11 +4,22 @@
 ]]
 
 local ElementData = require(game.ReplicatedStorage.Shared.Config.ElementData)
+local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local PassiveDefs = require(game.ReplicatedStorage.Shared.Config.PassiveDefs)
+local SynergyConfig = require(game.ReplicatedStorage.Shared.Config.SynergyConfig)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
+local SynergyService = require(game.ReplicatedStorage.Shared.Combat.SynergyService)
+local StatusService = require(script.Parent.StatusService)
+local DummyService = require(script.Parent.DummyService)
+local BossCombatTargets = require(script.Parent.Parent.Boss.BossCombatTargets)
+local PvpTeamService = require(script.Parent.Parent.Pvp.PvpTeamService)
+local HealService = require(script.Parent.HealService)
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
 
 local PassiveService = {}
 
@@ -23,10 +34,12 @@ export type OnHitStatus = {
 	id: string,
 	duration: number,
 	dps: number?,
+	params: { [string]: any }?,
 }
 
 local bonuses: { [number]: PassiveBonus } = {}
 local passiveIds: { [number]: { [string]: boolean } } = {}
+local synergyByUser: { [number]: SynergyConfig.SynergyResult } = {}
 
 local function emptyBonus(): PassiveBonus
 	return {
@@ -51,7 +64,13 @@ local function elementStatus(element: string): OnHitStatus?
 		elseif element == "Rock" then 2
 		else 3
 	local dps = if element == "Steel" then 4 elseif element == "Poison" then 3 elseif element == "Fire" then 7 else nil
-	return { id = sig.id, duration = dur, dps = dps }
+	local params = nil
+	if element == "Wind" then
+		params = { slowPct = 30 }
+	elseif element == "Rock" then
+		params = { slowPct = 50 }
+	end
+	return { id = sig.id, duration = dur, dps = dps, params = params }
 end
 
 local function registerPassive(passiveSet: { [string]: boolean }, abilityId: string)
@@ -61,6 +80,25 @@ end
 local function applyPassiveId(bonus: PassiveBonus, passiveSet: { [string]: boolean }, abilityId: string)
 	registerPassive(passiveSet, abilityId)
 	PassiveDefs.ApplyStatBonus(bonus, abilityId)
+	if abilityId == "stormgrasp_armorpassive" then
+		bonus.statusPotencyFlat += 10
+	elseif abilityId == "warbound_armorpassive" then
+		bonus.directMult *= 1.05
+	elseif abilityId == "phantom_step_armorpassive" then
+		bonus.critChanceFlat += 6
+	elseif abilityId == "arcanist_mind_armorpassive" then
+		bonus.statusPotencyFlat += 14
+	elseif abilityId == "lifeweaver_grace_armorpassive" then
+		bonus.buffPotencyFlat += 12
+	elseif abilityId == "spirit_charm_focuspassive" then
+		bonus.statusPotencyFlat += 14
+	elseif abilityId == "war_sigil_focuspassive" then
+		bonus.directMult *= 1.07
+	elseif abilityId == "lucky_coin_focuspassive" then
+		bonus.critChanceFlat += 8
+	elseif abilityId == "iron_heart_focuspassive" then
+		bonus.buffPotencyFlat += 18
+	end
 end
 
 local function collectFromAbilities(abilities: { any }?, bonus: PassiveBonus, passiveSet: { [string]: boolean })
@@ -97,6 +135,27 @@ function PassiveService.Refresh(userId: number)
 
 	bonuses[userId] = bonus
 	passiveIds[userId] = passiveSet
+
+	local resolved = LoadoutService.GetResolvedMain(userId)
+	synergyByUser[userId] = SynergyService.ResolveLoadout(userId, loadout, resolved, function(uuid)
+		return InventoryService.Find(userId, uuid)
+	end)
+end
+
+function PassiveService.GetSynergy(userId: number): SynergyConfig.SynergyResult
+	if not synergyByUser[userId] then
+		PassiveService.Refresh(userId)
+	end
+	return synergyByUser[userId] or {
+		band = "None",
+		pureElement = nil,
+		dualityElements = nil,
+		directMult = 1,
+		defenceBonusPct = 0,
+		resistBonusPct = 0,
+		statusPotencyFlat = 0,
+		pureOnHitBonus = nil,
+	}
 end
 
 function PassiveService.GetBonus(userId: number): PassiveBonus
@@ -114,10 +173,77 @@ function PassiveService.HasPassive(userId: number, abilityId: string): boolean
 	return set ~= nil and set[abilityId] == true
 end
 
---- L3 finisher: guaranteed gem status. L1/L2: status_weaponpassive proc from PassiveDefs.
+function PassiveService.GetSlotElement(userId: number, slotId: string): string?
+	local loadout = LoadoutService.Get(userId)
+	local uuid = (loadout :: any)[slotId]
+	if not uuid then
+		return nil
+	end
+	local inst = InventoryService.Find(userId, uuid)
+	local def = inst and ItemDefs.Get(inst.defId)
+	return def and def.element
+end
+
+function PassiveService.GetDirectTakenMult(userId: number): number
+	if PassiveService.HasPassive(userId, "unbound_hide_armorpassive") then
+		return 0.97
+	end
+	return 1
+end
+
+function PassiveService.TryCarapaceReflect(victimUserId: number, attacker: Player): boolean
+	if not PassiveService.HasPassive(victimUserId, "carapace_armorpassive") then
+		return false
+	end
+	if math.random() >= 0.10 then
+		return false
+	end
+	local element = PassiveService.GetSlotElement(victimUserId, "chest")
+	if not element or element == "Neutral" then
+		return false
+	end
+	local char = attacker.Character
+	if not char then
+		return false
+	end
+	local status = elementStatus(element)
+	if not status then
+		return false
+	end
+	local StatusService = require(script.Parent.StatusService)
+	StatusService.Apply(char, status.id, status.duration, {
+		sourceUserId = victimUserId,
+		dps = status.dps,
+	})
+	return true
+end
+
+function PassiveService.TryThornReflect(victimUserId: number, attacker: Player, damageDealt: number): boolean
+	if damageDealt <= 0 or not PassiveService.HasPassive(victimUserId, "thorn_reflect_armorpassive") then
+		return false
+	end
+	local char = attacker.Character
+	if not char then
+		return false
+	end
+	local reflect = math.floor(damageDealt * 0.20 + 0.5)
+	if reflect <= 0 then
+		return false
+	end
+	local DamageService = require(script.Parent.DamageService)
+	DamageService.ApplyHp(char, "Player", reflect)
+	return true
+end
+
+--- Pure x3: guaranteed signature on every main-hand LA hit. L3 / status_weaponpassive otherwise.
 function PassiveService.RollLaOnHitStatus(userId: number, comboStep: number, element: string): OnHitStatus?
 	if element == "Neutral" or element == "" then
 		return nil
+	end
+
+	local synergy = PassiveService.GetSynergy(userId)
+	if synergy.band == "Pure" and synergy.pureElement == element then
+		return elementStatus(element)
 	end
 
 	if comboStep == 3 then
@@ -134,6 +260,227 @@ function PassiveService.RollLaOnHitStatus(userId: number, comboStep: number, ele
 	return nil
 end
 
+--- Helm Pulse buff: next N light attacks use head armor element instead of gem element.
+function PassiveService.ResolveLaElement(userId: number, gemElement: string, character: Model?): (string, boolean)
+	local helm = character and StatusService.Get(character, "HelmPulse")
+	if helm and helm.params and typeof(helm.params.charges) == "number" and helm.params.charges > 0 then
+		local el = helm.params.element
+		if typeof(el) == "string" and el ~= "" and el ~= "Neutral" then
+			helm.params.charges -= 1
+			if helm.params.charges <= 0 then
+				StatusService.Remove(character, "HelmPulse", userId)
+			end
+			return el, true
+		end
+	end
+	return gemElement, false
+end
+
+function PassiveService.ElementStatus(element: string): OnHitStatus?
+	return elementStatus(element)
+end
+
+function PassiveService.ScaleOnHitStatus(
+	userId: number,
+	status: { id: string, duration: number, dps: number?, params: { [string]: any }? }
+): OnHitStatus
+	local StatService = require(script.Parent.StatService)
+	local stats = StatService.Get(userId)
+	local derived = PassiveService.GetBonus(userId)
+	local synergy = PassiveService.GetSynergy(userId)
+	local potency = stats.INT * 0.5 + derived.statusPotencyFlat + synergy.statusPotencyFlat
+	local mult = 1 + potency * 0.01
+	return {
+		id = status.id,
+		duration = status.duration * mult,
+		dps = if status.dps then status.dps * mult else nil,
+		params = status.params,
+	}
+end
+
+--- Scale + Pure x3 element perks (CHEMISTRY_ENGINE §3.4).
+function PassiveService.FinalizeLaOnHitStatus(userId: number, status: OnHitStatus, element: string?): OnHitStatus
+	local scaled = PassiveService.ScaleOnHitStatus(userId, status)
+	if not element or element == "Neutral" then
+		return scaled
+	end
+
+	local synergy = PassiveService.GetSynergy(userId)
+	if synergy.band ~= "Pure" or synergy.pureElement ~= element then
+		return scaled
+	end
+
+	local bonus = synergy.pureOnHitBonus
+	if bonus then
+		if typeof(bonus.durationMult) == "number" and bonus.durationMult > 0 then
+			scaled.duration *= bonus.durationMult
+		end
+		if typeof(bonus.dpsBonus) == "number" and scaled.dps then
+			scaled.dps += bonus.dpsBonus
+		end
+	end
+
+	if element == "Lightning" then
+		scaled.duration += 0.15
+	elseif element == "Steel" then
+		scaled.duration += 1
+	elseif element == "Rock" and scaled.id == "Slow" then
+		scaled.params = { slowPct = 50, damageTakenMult = 1.05 }
+	elseif element == "Wind" and scaled.id == "Windy" then
+		scaled.params = { slowPct = 33 }
+	end
+
+	return scaled
+end
+
+--- Pure Water: AoE Wet splash 8 stud around primary target.
+function PassiveService.TryPureCascadeSplash(attacker: Player, primaryTarget: Model, element: string)
+	if element ~= "Water" then
+		return
+	end
+	local synergy = PassiveService.GetSynergy(attacker.UserId)
+	if synergy.band ~= "Pure" or synergy.pureElement ~= "Water" then
+		return
+	end
+
+	local raw = elementStatus("Water")
+	if not raw then
+		return
+	end
+	local wet = PassiveService.FinalizeLaOnHitStatus(attacker.UserId, raw, "Water")
+
+	local root = primaryTarget.PrimaryPart or primaryTarget:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	local origin = root.Position
+	local radius = 8
+
+	local function trySplash(model: Model)
+		if model == primaryTarget or model == attacker.Character then
+			return
+		end
+		local pp = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+		if not pp or not pp:IsA("BasePart") then
+			return
+		end
+		if (pp.Position - origin).Magnitude > radius then
+			return
+		end
+		if model:GetAttribute("IsCombatDummy") or model.Name == "TrainingDummy" then
+			StatusService.Apply(model, wet.id, wet.duration, {
+				sourceUserId = attacker.UserId,
+				dps = wet.dps,
+				params = wet.params,
+			})
+			DummyService.RefreshStatusLabel(StatusService.FormatShort(model))
+			return
+		end
+		local victim = Players:GetPlayerFromCharacter(model)
+		if victim and PvpTeamService.CanDamage(attacker.UserId, victim.UserId) then
+			StatusService.Apply(model, wet.id, wet.duration, {
+				sourceUserId = attacker.UserId,
+				dps = wet.dps,
+				params = wet.params,
+			})
+			return
+		end
+		if model:GetAttribute("IsBoss") or model:GetAttribute("IsBossAdd") or model:GetAttribute("IsPvpOpponent") then
+			StatusService.Apply(model, wet.id, wet.duration, {
+				sourceUserId = attacker.UserId,
+				dps = wet.dps,
+				params = wet.params,
+			})
+		end
+	end
+
+	for _, plr in Players:GetPlayers() do
+		if plr.Character then
+			trySplash(plr.Character)
+		end
+	end
+	for _, child in Workspace:GetChildren() do
+		if child:IsA("Model") then
+			trySplash(child)
+		end
+	end
+	local boss = BossCombatTargets.GetBossModel()
+	if boss then
+		trySplash(boss)
+	end
+end
+
+function PassiveService.ApplyFortifyAura(caster: Player, duration: number, params: { [string]: number }?)
+	if not PassiveService.HasPassive(caster.UserId, "fortifyaura_armorpassive") then
+		return
+	end
+	local character = caster.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return
+	end
+	local mult = params and params.damageTakenMult
+	if typeof(mult) ~= "number" then
+		mult = 0.9
+	end
+	local auraMult = 1 - (1 - mult) * 0.5
+	local auraDur = duration * 0.5
+	local origin = root.Position
+	local radius = CombatConfig.FortifyAuraRadius or 8
+
+	local function tryAlly(model: Model)
+		if model == character then
+			return
+		end
+		local pp = model.PrimaryPart or model:FindFirstChild("HumanoidRootPart")
+		if not pp or not pp:IsA("BasePart") then
+			return
+		end
+		if (pp.Position - origin).Magnitude > radius then
+			return
+		end
+		StatusService.Apply(model, "Fortify", auraDur, {
+			sourceUserId = caster.UserId,
+			params = { damageTakenMult = auraMult },
+		})
+	end
+
+	local Players = game:GetService("Players")
+	for _, plr in Players:GetPlayers() do
+		if plr ~= caster and plr.Character then
+			tryAlly(plr.Character)
+		end
+	end
+end
+
+function PassiveService.TryLifesteal(userId: number, damageDealt: number)
+	if damageDealt <= 0 then
+		return
+	end
+	if not passiveIds[userId] then
+		PassiveService.Refresh(userId)
+	end
+	local passiveSet = passiveIds[userId]
+	if not passiveSet then
+		return
+	end
+	local totalPct = 0
+	for abilityId in passiveSet do
+		local pct = PassiveDefs.LifestealPct(abilityId)
+		if pct then
+			totalPct += pct
+		end
+	end
+	if totalPct <= 0 then
+		return
+	end
+	local heal = math.max(1, math.floor(damageDealt * totalPct + 0.5))
+	local plr = Players:GetPlayerByUserId(userId)
+	if plr and plr.Character then
+		HealService.Apply(plr.Character, heal)
+	end
+end
+
 function PassiveService.GetSummary(userId: number): { PassiveBonus }
 	local b = PassiveService.GetBonus(userId)
 	return { b }
@@ -142,6 +489,7 @@ end
 function PassiveService.Clear(userId: number)
 	bonuses[userId] = nil
 	passiveIds[userId] = nil
+	synergyByUser[userId] = nil
 end
 
 return PassiveService
