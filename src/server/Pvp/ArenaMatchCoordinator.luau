@@ -121,6 +121,24 @@ function ArenaMatchCoordinator.Start()
 		if started or not pending then
 			return
 		end
+		-- Keep only players who actually arrived; drop empty teams.
+		local filteredTeams: { { number } } = {}
+		for _, team in pending.teams do
+			local members: { number } = {}
+			for _, userId in team do
+				if arrived[userId] then
+					table.insert(members, userId)
+				end
+			end
+			if #members > 0 then
+				table.insert(filteredTeams, members)
+			end
+		end
+		if #filteredTeams == 0 then
+			warn("[ArenaMatch] Join timeout — no arrived players; aborting")
+			pending = nil
+			return
+		end
 		warn("[ArenaMatch] Join timeout — starting with arrived players only")
 		started = true
 		local bracket = PlaceRuntime.GetPvpBracket() or PlaceRuntime.BracketFromQueueId(pending.queueId)
@@ -128,7 +146,7 @@ function ArenaMatchCoordinator.Start()
 			matchId = pending.matchId,
 			queueId = pending.queueId,
 			bracket = bracket,
-			teams = pending.teams,
+			teams = filteredTeams,
 		})
 	end)
 

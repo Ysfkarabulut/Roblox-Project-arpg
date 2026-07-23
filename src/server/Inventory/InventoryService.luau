@@ -277,6 +277,15 @@ function InventoryService.GrantStarter(userId: number)
 	if not hasCompleteFrame then
 		InventoryService.CreateAssembledFrame(userId, "h_1h_sword", "b_sword_st", "p_balanced", "gem_steel")
 	end
+
+	-- Loose forge kit so players can Attach → Forge a second weapon (scepter playtest)
+	local forgeKit = { "h_1h_wandscepter", "b_scepter_st", "p_balanced" }
+	for _, defId in forgeKit do
+		if not have[defId] then
+			InventoryService.AddItem(userId, defId)
+			have[defId] = true
+		end
+	end
 end
 
 return InventoryService

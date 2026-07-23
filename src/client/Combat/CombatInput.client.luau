@@ -38,12 +38,25 @@ local GetSnapshot = invRemotes:WaitForChild("GetSnapshot") :: RemoteFunction
 local hotbar: { [number]: string? } = {}
 local cdUntil: { [string]: number } = {}
 local shiftLock = true
+-- During dodge, face dash direction instead of camera (one forward roll anim covers all dirs).
+local dodgeFaceUntil = 0
+local dodgeFaceDir: Vector3? = nil
 -- Server-authoritative defend stance (guard OR parry). Do not set locally on RMB.
 local defending = false
 local rmbHeld = false
 local reloadUntil = 0
 
 local SHIFT_LOCK_OFFSET = CombatConfig.ShiftLockCameraOffset or Vector3.new(1.75, 0, 0)
+
+local function beginDodgeFacing(dir: Vector3)
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	if flat.Magnitude < 0.1 then
+		return
+	end
+	dodgeFaceDir = flat.Unit
+	local hold = (CombatConfig.DodgeDashSec or 0.26) + 0.18
+	dodgeFaceUntil = os.clock() + hold
+end
 
 -- Stamina HUD
 local gui = UiTheme.ScreenGui({
@@ -95,6 +108,10 @@ local function isTyping(): boolean
 	return UserInputService:GetFocusedTextBox() ~= nil
 end
 
+local function isReloading(): boolean
+	return os.clock() < reloadUntil
+end
+
 local function getHumanoid(): Humanoid?
 	local char = player.Character
 	return char and char:FindFirstChildOfClass("Humanoid")
@@ -124,6 +141,7 @@ local function applyShiftLockState()
 end
 
 --- Face camera yaw only — never override camera CFrame (that caused pitch slide).
+--- While dodging, face dash direction so the forward roll matches movement.
 local function updateShiftLockCharacter()
 	if not shiftLock or isTyping() then
 		return
@@ -135,7 +153,12 @@ local function updateShiftLockCharacter()
 		return
 	end
 	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-	local flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
+	local flat: Vector3
+	if os.clock() < dodgeFaceUntil and dodgeFaceDir then
+		flat = dodgeFaceDir
+	else
+		flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
+	end
 	if flat.Magnitude > 0.1 then
 		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
 	end
@@ -177,10 +200,6 @@ local function tryCastSlot(slotIndex: number)
 	CastAbility:FireServer(abilityId, look, aim)
 end
 
-local function isReloading(): boolean
-	return os.clock() < reloadUntil
-end
-
 local function doLightAttack()
 	if defending or isReloading() then
 		return
@@ -195,6 +214,7 @@ local function doDodge()
 	if dir.Magnitude < 0.1 then
 		dir = camera.CFrame.LookVector
 	end
+	beginDodgeFacing(dir)
 	DodgeRemote:FireServer(dir)
 end
 
@@ -267,6 +287,9 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 	end
 	if userId == player.UserId then
 		local animKey = fx.anim or "Melee"
+		if animKey == "Dodge" and typeof(fx.look) == "Vector3" then
+			beginDodgeFacing(fx.look)
+		end
 		CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
 		if typeof(fx.recoverySec) == "number" and fx.recoverySec > 0 and player.Character then
 			local char = player.Character
@@ -294,6 +317,10 @@ end)
 CombatNotify.OnClientEvent:Connect(function(result: any)
 	if typeof(result) ~= "table" then
 		return
+	end
+	if result.action == "Dodge" and result.ok == false then
+		dodgeFaceUntil = 0
+		dodgeFaceDir = nil
 	end
 	if result.action == "Guard" or result.action == "Parry" or result.action == "Defend" then
 		defending = rmbHeld and result.ok == true and (result.guarding == true or result.parrying == true)

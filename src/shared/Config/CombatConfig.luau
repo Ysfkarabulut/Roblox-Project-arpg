@@ -79,9 +79,9 @@ local CombatConfig = {
 
 	DodgeCost = 18,
 	DodgeIFrameSec = 0.22,
-	DodgeRecoverySec = 0.28,
+	DodgeRecoverySec = 0.22,
 	DodgeDistance = 11,
-	DodgeDashSec = 0.32,
+	DodgeDashSec = 0.26,
 	SprintDrainPerSec = 12,
 	WalkSpeed = 16,
 	SprintWalkSpeed = 24, -- Ctrl sprint (1.5×)

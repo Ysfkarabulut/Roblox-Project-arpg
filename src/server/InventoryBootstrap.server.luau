@@ -40,6 +40,7 @@ local RemoveWeaponPart = remoteEvent("RemoveWeaponPart")
 local SocketGem = remoteEvent("SocketGem")
 local UnsocketGem = remoteEvent("UnsocketGem")
 local CreateWeaponFrame = remoteEvent("CreateWeaponFrame")
+local ForgeWeapon = remoteEvent("ForgeWeapon")
 local AllocateStat = remoteEvent("AllocateStat")
 
 local PlayerProfileService = require(script.Parent.Profile.PlayerProfileService)
@@ -112,9 +113,13 @@ GetSnapshot.OnServerInvoke = function(player: Player)
 	return buildSnapshot(player.UserId)
 end
 
-EquipItem.OnServerEvent:Connect(function(player: Player, uuid: string, slotId: string)
+local function isLoadoutLocked(userId: number): boolean
 	local LoadoutLockService = require(script.Parent.Combat.LoadoutLockService)
-	if LoadoutLockService.IsLocked(player.UserId) then
+	return LoadoutLockService.IsLocked(userId)
+end
+
+EquipItem.OnServerEvent:Connect(function(player: Player, uuid: string, slotId: string)
+	if isLoadoutLocked(player.UserId) then
 		return
 	end
 	if typeof(uuid) ~= "string" or typeof(slotId) ~= "string" then
@@ -133,6 +138,9 @@ EquipItem.OnServerEvent:Connect(function(player: Player, uuid: string, slotId: s
 end)
 
 UnequipSlot.OnServerEvent:Connect(function(player: Player, slotId: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(slotId) ~= "string" then
 		return
 	end
@@ -145,6 +153,9 @@ UnequipSlot.OnServerEvent:Connect(function(player: Player, slotId: string)
 end)
 
 BindAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, slotIndex: number)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(abilityId) ~= "string" or typeof(slotIndex) ~= "number" then
 		return
 	end
@@ -156,6 +167,9 @@ BindAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, sl
 end)
 
 UnbindHotbar.OnServerEvent:Connect(function(player: Player, slotIndex: number)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(slotIndex) ~= "number" then
 		return
 	end
@@ -164,6 +178,9 @@ UnbindHotbar.OnServerEvent:Connect(function(player: Player, slotIndex: number)
 end)
 
 DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(uuid) ~= "string" then
 		return
 	end
@@ -185,6 +202,9 @@ DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
 end)
 
 InstallWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: string, partUuid: string, slot: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(frameUuid) ~= "string" or typeof(partUuid) ~= "string" or typeof(slot) ~= "string" then
 		return
 	end
@@ -200,6 +220,9 @@ InstallWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: stri
 end)
 
 RemoveWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: string, slot: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(frameUuid) ~= "string" or typeof(slot) ~= "string" then
 		return
 	end
@@ -212,6 +235,9 @@ RemoveWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: strin
 end)
 
 SocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, gemUuid: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(frameUuid) ~= "string" or typeof(gemUuid) ~= "string" then
 		return
 	end
@@ -223,6 +249,9 @@ SocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, gemU
 end)
 
 UnsocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, preserve: boolean?)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(frameUuid) ~= "string" then
 		return
 	end
@@ -237,11 +266,37 @@ UnsocketGem.OnServerEvent:Connect(function(player: Player, frameUuid: string, pr
 end)
 
 CreateWeaponFrame.OnServerEvent:Connect(function(player: Player)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	WeaponAssemblyService.CreateFrame(player.UserId)
 	push(player)
 end)
 
+ForgeWeapon.OnServerEvent:Connect(function(player: Player, handleUuid: any, bladeUuid: any, pommelUuid: any, gemUuid: any)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
+	if typeof(handleUuid) ~= "string" or typeof(bladeUuid) ~= "string" or typeof(pommelUuid) ~= "string" then
+		return
+	end
+	local gem = if typeof(gemUuid) == "string" then gemUuid else nil
+	local frameUuid, err = WeaponAssemblyService.ForgeFromParts(player.UserId, handleUuid, bladeUuid, pommelUuid, gem)
+	if not frameUuid then
+		warn("[Forge] Failed", player.Name, err)
+		return
+	end
+	HotbarService.AutoFill(player.UserId)
+	if _G.RefreshWeaponVisuals then
+		_G.RefreshWeaponVisuals(player)
+	end
+	push(player)
+end)
+
 AllocateStat.OnServerEvent:Connect(function(player: Player, statKey: string)
+	if isLoadoutLocked(player.UserId) then
+		return
+	end
 	if typeof(statKey) ~= "string" then
 		return
 	end

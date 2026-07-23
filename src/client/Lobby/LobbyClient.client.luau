@@ -12,7 +12,11 @@ end
 
 local player = Players.LocalPlayer
 
-local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes")
+local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes", 30)
+if not remotes then
+	warn("[LobbyClient] LobbyRemotes missing — LobbyBootstrap failed")
+	return
+end
 local PartyInvite = remotes:WaitForChild("PartyInvite") :: RemoteEvent
 local PartyInviteByName = remotes:WaitForChild("PartyInviteByName") :: RemoteEvent
 local PartyRespondInvite = remotes:WaitForChild("PartyRespondInvite") :: RemoteEvent

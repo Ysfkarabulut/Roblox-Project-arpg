@@ -74,13 +74,11 @@ end
 local function weaponBladeLines(lines: { string }, def: any, upgradeLevel: number)
 	section(lines, "Weapon Blade")
 	if def.family then
-		line(lines, `Family: {def.family} · Scaling: {def.scaling or "STR"}`)
+		-- Scaling lives on the handle, not the blade part.
+		line(lines, `Family: {def.family} · Handle type: {def.handleType or "?"}`)
 	end
-	if def.asTier then
-		line(lines, `AS tier: {def.asTier} · Damage mult: ×{string.format("%.2f", def.bladeDamageMult or 1)}`)
-	end
-	if def.baseDamage then
-		line(lines, `Base damage: {def.baseDamage}`)
+	if def.bladeDamageMult then
+		line(lines, `Blade damage mult: ×{string.format("%.2f", def.bladeDamageMult or 1)}`)
 	end
 	if def.familyPerk then
 		line(lines, `Family perk: {def.familyPerk}`)
@@ -98,7 +96,10 @@ end
 
 local function resolvedFrameLines(lines: { string }, rm: any)
 	section(lines, "Assembled Weapon")
-	line(lines, `DMG {rm.baseDamage} · {rm.element} · AS ×{string.format("%.2f", rm.attackSpeedMult or 1)}`)
+	line(lines, `DMG {rm.baseDamage} · {rm.element} · Scale {rm.scaling or "STR"} · AS ×{string.format("%.2f", rm.attackSpeedMult or 1)}`)
+	if rm.family then
+		line(lines, `Family: {rm.family} · Kind: {rm.kind or "?"}`)
+	end
 	line(lines, `Handle: {rm.handleDefId or "?"} · Blade: {rm.bladeDefId or "?"}`)
 	line(lines, `Pommel: {rm.pommelDefId or "?"} · Gem: {rm.gemDefId or "Neutral"}`)
 	local pseudo = {
@@ -167,19 +168,17 @@ function ItemTooltip.Build(ctx: TooltipContext): string
 		then ctx.itemData.upgradeLevel
 		else 0
 
-	if ctx.isEquippedMain and ctx.resolvedMain then
+	if defId == "weapon_frame" and ctx.resolvedMain then
 		resolvedFrameLines(lines, ctx.resolvedMain)
-	elseif defId == "weapon_frame" and ctx.resolvedMain and ctx.itemData then
-		resolvedFrameLines(lines, ctx.resolvedMain)
+	elseif kind == "WeaponHandle" or kind == "Handle" then
+		handleLines(lines, def)
 	elseif kind == "WeaponBlade" then
 		weaponBladeLines(lines, def, upgradeLevel)
 	elseif kind == "Armor" or string.sub(kind, 1, 6) == "Armor" then
 		armorLines(lines, def)
-	elseif kind == "Handle" then
-		handleLines(lines, def)
 	elseif kind == "Pommel" or kind == "String" or kind == "WeaponPommel" then
 		pommelLines(lines, def)
-	elseif kind == "Gem" then
+	elseif kind == "ElementGem" or kind == "Gem" then
 		section(lines, "Gem")
 		line(lines, def.desc or `Element: {def.element}`)
 		line(lines, "Socket into weapon handle. Replaces existing gem.")

@@ -93,8 +93,7 @@ Dodge.OnServerEvent:Connect(function(player: Player, moveDir: Vector3?)
 	if ok then
 		CombatFx:FireAllClients(player.UserId, {
 			anim = "Dodge",
-			vfx = "Dash",
-			element = "Wind",
+			vfx = "None",
 			origin = player.Character and player.Character:FindFirstChild("HumanoidRootPart") and (player.Character.HumanoidRootPart :: BasePart).Position,
 			look = (function()
 				local d = moveDir

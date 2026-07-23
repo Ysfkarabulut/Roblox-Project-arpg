@@ -68,7 +68,15 @@ local function collectTargets(caster: Player, family, look: Vector3, aimPos: Vec
 		return {}
 	end
 	local origin = root.Position
-	local forward = look.Magnitude > 0.1 and look.Unit or root.CFrame.LookVector
+	-- Flatten aim for horizontal cone/melee checks (camera pitch otherwise inflates angles → constant whiffs).
+	local rawLook = look.Magnitude > 0.1 and look.Unit or root.CFrame.LookVector
+	local forward = Vector3.new(rawLook.X, 0, rawLook.Z)
+	if forward.Magnitude < 0.1 then
+		local flatRoot = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+		forward = if flatRoot.Magnitude > 0.1 then flatRoot.Unit else Vector3.new(0, 0, -1)
+	else
+		forward = forward.Unit
+	end
 	local range = family.laRange
 	local targets = {}
 

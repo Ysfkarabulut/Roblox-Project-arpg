@@ -17,6 +17,10 @@ local ArenaState = Instance.new("RemoteEvent")
 ArenaState.Name = "ArenaState"
 ArenaState.Parent = folder
 
+local SpectateTarget = Instance.new("RemoteEvent")
+SpectateTarget.Name = "SpectateTarget"
+SpectateTarget.Parent = folder
+
 if PlaceRuntime.IsLobby() then
 	local StartPvpDev = Instance.new("RemoteEvent")
 	StartPvpDev.Name = "StartPvpDev"

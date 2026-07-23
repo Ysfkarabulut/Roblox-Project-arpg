@@ -5,8 +5,8 @@
 local Players = game:GetService("Players")
 
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
-local InventoryService = require(script.Parent.Inventory.InventoryService)
-local LoadoutService = require(script.Parent.Inventory.LoadoutService)
+local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 
 local TradeService = {}
 

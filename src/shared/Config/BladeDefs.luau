@@ -803,16 +803,36 @@ function BladeDefs.IsTwoHandHandle(handleType: string?): boolean
 end
 
 function BladeDefs.ValidateBlade(blade: any): (boolean, string?)
+	if typeof(blade) ~= "table" then
+		return false, "InvalidBlade"
+	end
 	local rarity = blade.rarity or "Common"
 	local active, passive = countAbilities(blade.abilities)
 	local total = active + passive
 	local is2H = BladeDefs.IsTwoHandHandle(blade.handleType)
+	local isScepter = blade.family == "Scepter" or blade.subFamily == "Scepter"
 
 	if rarity == "BossExclusive" then
 		if active > 3 or passive > 2 then
 			return false, "BossAbilityCapExceeded"
 		end
 		return true, nil
+	end
+
+	-- Support 1H: dual heal/buff actives by design (common 2A, rare 2A+1P).
+	if isScepter and not is2H then
+		if rarity == "Common" then
+			if active > 2 or passive > 0 or total < 1 then
+				return false, "AbilityCapExceededScepter"
+			end
+			return true, nil
+		end
+		if rarity == "Rare" then
+			if active > 2 or passive > 1 or active < 1 then
+				return false, "AbilityCapExceededScepter"
+			end
+			return true, nil
+		end
 	end
 
 	if is2H then

@@ -709,6 +709,9 @@ function CombatVfx.Play(fx: any)
 	if typeof(fx) ~= "table" then
 		return
 	end
+	if fx.vfx == "None" or fx.vfx == false then
+		return
+	end
 	local ctx = VfxConfig.BuildContext(fx)
 	local origin: Vector3 = fx.origin or Vector3.zero
 	local look: Vector3 = fx.look or Vector3.new(0, 0, -1)

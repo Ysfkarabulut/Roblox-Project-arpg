@@ -10,13 +10,14 @@ local AnimConfig = {
 	Jump = "rbxassetid://507765000",
 	Fall = "rbxassetid://507767968",
 
-	-- Base action tracks (CombatAnims.DodgeRoll KF overrides Dodge when present)
+	-- Base action tracks
 	Melee = "rbxassetid://522635514", -- tool slash
 	Cast = "rbxassetid://507770453", -- point (short; wave was sticking)
 	Bow = "rbxassetid://522638767", -- tool lunge
 	Buff = "rbxassetid://507770453",
-	-- Dodge: CombatAnims.StandToRoll / DodgeRoll KeyframeSequence (+ procedural lean)
-	Dodge = "",
+	-- Dodge: published Mixamo roll; CombatAnim strips Pose translations at runtime
+	-- (raw AE publish doubles bind offsets on live R15 → exploded limbs).
+	Dodge = "rbxassetid://136179211599391",
 
 	-- Weapon weld swing: pitch/yaw/roll degrees over duration
 	SwingProfile = {

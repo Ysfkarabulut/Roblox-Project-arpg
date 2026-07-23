@@ -38,7 +38,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 
 
-local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes")
+local remotes = ReplicatedStorage:WaitForChild("LobbyRemotes", 30)
+if not remotes then
+	warn("[LobbyUI] LobbyRemotes missing — LobbyBootstrap failed")
+	return
+end
 
 local PartyInviteByName = remotes:WaitForChild("PartyInviteByName") :: RemoteEvent
 

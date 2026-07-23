@@ -83,6 +83,9 @@ end)
 local okTooltip, ItemTooltip = pcall(function()
 	return require(ReplicatedStorage.Shared.UI.ItemTooltip)
 end)
+local okResolver, WeaponResolver = pcall(function()
+	return require(ReplicatedStorage.Shared.Combat.WeaponResolver)
+end)
 local okGlossary, GameGlossary = pcall(function()
 	return require(ReplicatedStorage.Shared.Config.GameGlossary)
 end)
@@ -98,7 +101,7 @@ end)
 local okIcon, ItemIcon = pcall(function()
 	return require(script.Parent.ItemIcon)
 end)
-if not (okSlots and okHotbar and okCombat and okIcon and okUpgrade and okTooltip and okGlossary and okAbilityTip and okHoverTip and okToast) then
+if not (okSlots and okHotbar and okCombat and okIcon and okUpgrade and okTooltip and okGlossary and okAbilityTip and okHoverTip and okToast and okResolver) then
 	failBoot("GearUI config require failed — check Output")
 	return
 end
@@ -154,6 +157,7 @@ local RemoveWeaponPart = remotes:WaitForChild("RemoveWeaponPart") :: RemoteEvent
 local SocketGem = remotes:WaitForChild("SocketGem") :: RemoteEvent
 local UnsocketGem = remotes:WaitForChild("UnsocketGem") :: RemoteEvent
 local CreateWeaponFrame = remotes:WaitForChild("CreateWeaponFrame") :: RemoteEvent
+local ForgeWeapon = remotes:WaitForChild("ForgeWeapon") :: RemoteEvent
 local AllocateStat = remotes:WaitForChild("AllocateStat") :: RemoteEvent
 
 local UpgradeItem: RemoteEvent? = nil
@@ -194,9 +198,11 @@ local snapshot = {
 
 local invFilter = "All"
 local pendingInstallSlot: string? = nil
+local assemblyFrameUuid: string? = nil
 local pendingConfirmAction: (() -> ())? = nil
 local gemUnsocketMode = false
 local pendingGemUnsocketUuid: string? = nil
+local forgeApi: any = nil
 
 local FILTER_OPTIONS = {
 	{ id = "All", label = "All" },
@@ -206,6 +212,141 @@ local FILTER_OPTIONS = {
 	{ id = "Pommels", label = "Pommel" },
 	{ id = "Gems", label = "Gem" },
 }
+
+local SLOT_TO_FILTER = {
+	handle = "Handles",
+	blade = "Blades",
+	pommel = "Pommels",
+}
+
+local COL_PENDING = Color3.fromRGB(180, 140, 50)
+
+-- Forward decls — assembly buttons wire before refresh bodies are assigned.
+local refreshDetail: () -> ()
+local refreshInventory: () -> ()
+local refreshGear: () -> ()
+local refreshSkills: () -> ()
+local refreshFilterBar: () -> ()
+
+local function clearAssemblyPick()
+	pendingInstallSlot = nil
+	assemblyFrameUuid = nil
+end
+
+local function findItemByUuid(uuid: string?)
+	if not uuid then
+		return nil
+	end
+	for _, item in snapshot.items do
+		if item.uuid == uuid then
+			return item
+		end
+	end
+	return nil
+end
+
+local function frameHandleType(frameUuid: string?): string?
+	local frame = findItemByUuid(frameUuid)
+	if not frame or not frame.parts or not frame.parts.handle then
+		return nil
+	end
+	local handleItem = findItemByUuid(frame.parts.handle)
+	local def = handleItem and ItemDefs.Get(handleItem.defId)
+	return def and def.handleType
+end
+
+local function frameBladeHandleType(frameUuid: string?): string?
+	local frame = findItemByUuid(frameUuid)
+	if not frame or not frame.parts or not frame.parts.blade then
+		return nil
+	end
+	local bladeItem = findItemByUuid(frame.parts.blade)
+	local def = bladeItem and ItemDefs.Get(bladeItem.defId)
+	return def and def.handleType
+end
+
+local function isRangedHandleType(handleType: string?): boolean
+	return handleType == "2H_Bow" or handleType == "2H_Crossbow"
+end
+
+--- True if this free bag item can fill the pending assembly slot.
+local function matchesAssemblyPick(defId: string): boolean
+	if not pendingInstallSlot then
+		return true
+	end
+	local def = ItemDefs.Get(defId)
+	if not def then
+		return false
+	end
+	if pendingInstallSlot == "handle" then
+		if def.kind ~= "WeaponHandle" then
+			return false
+		end
+		local bladeHt = frameBladeHandleType(assemblyFrameUuid)
+		if bladeHt and def.handleType and def.handleType ~= bladeHt then
+			return false
+		end
+		return true
+	elseif pendingInstallSlot == "blade" then
+		if def.kind ~= "WeaponBlade" then
+			return false
+		end
+		local ht = frameHandleType(assemblyFrameUuid)
+		if ht and def.handleType and def.handleType ~= ht then
+			return false
+		end
+		return true
+	elseif pendingInstallSlot == "pommel" then
+		if def.kind ~= "WeaponPommel" then
+			return false
+		end
+		local ht = frameHandleType(assemblyFrameUuid)
+		local role = (def :: any).pommelRole or "Pommel"
+		if isRangedHandleType(ht) then
+			return role == "String"
+		end
+		return role == "Pommel"
+	end
+	return false
+end
+
+local function beginAssemblyPick(slotName: string)
+	if not selectedUuid then
+		return
+	end
+	local frame = findItemByUuid(selectedUuid)
+	if not frame or frame.defId ~= "weapon_frame" then
+		UiToast.Show("Select a Weapon Frame first.", 2, "warn")
+		return
+	end
+	if pendingInstallSlot == slotName and assemblyFrameUuid == selectedUuid then
+		clearAssemblyPick()
+		invFilter = "All"
+		UiToast.Show("Install cancelled.", 1.2, "warn")
+		return
+	end
+
+	pendingInstallSlot = slotName
+	assemblyFrameUuid = selectedUuid
+	invFilter = SLOT_TO_FILTER[slotName] or "All"
+
+	local freeCount = 0
+	for _, item in snapshot.items do
+		if not item.installedIn and matchesAssemblyPick(item.defId) then
+			freeCount += 1
+		end
+	end
+	if freeCount == 0 then
+		local hint = if slotName == "handle"
+			then "F8 grant: h_1h_wandscepter"
+			elseif slotName == "blade"
+			then "F8 grant: b_scepter_st"
+			else "F8 grant: p_balanced"
+		UiToast.Show(`No free {slotName}s in bag. {hint}`, 3.5, "warn")
+	else
+		UiToast.Show(`Click a {slotName} in inventory ({freeCount} ready).`, 2.5, "info")
+	end
+end
 
 local selectedUuid: string? = nil
 local selectedAbility: string? = nil
@@ -828,7 +969,13 @@ local function refreshPreview()
 	if not char then
 		return
 	end
+	local prevArchivable = char.Archivable
+	char.Archivable = true
 	local clone = char:Clone()
+	char.Archivable = prevArchivable
+	if not clone then
+		return
+	end
 	for _, d in clone:GetDescendants() do
 		if d:IsA("BaseScript") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
 			d:Destroy()
@@ -952,7 +1099,7 @@ filterLayout.Parent = filterBar
 local filterButtons: { [string]: TextButton } = {}
 
 local invGrid = Instance.new("ScrollingFrame")
-invGrid.Size = UDim2.new(1, -20, 0.46, -12)
+invGrid.Size = UDim2.new(1, -20, 0.32, -8)
 invGrid.Position = UDim2.fromOffset(10, 72)
 invGrid.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
 invGrid.BorderSizePixel = 0
@@ -973,10 +1120,60 @@ gridLayout.CellPadding = UDim2.fromOffset(5, 5)
 gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 gridLayout.Parent = invGrid
 
+-- ========== FORGE (module — keeps GearUI under Luau local register limit) ==========
+do
+	local GearForgePanel = require(script.Parent.GearForgePanel)
+	forgeApi = GearForgePanel.Mount({
+		parent = invPanel,
+		colors = {
+			slot = COL_SLOT,
+			slotEq = COL_SLOT_EQ,
+			text = COL_TEXT,
+			muted = COL_MUTED,
+		},
+		corner = corner,
+		stroke = stroke,
+		shortName = shortName,
+		toast = function(msg, dur, kind)
+			UiToast.Show(msg, dur, kind)
+		end,
+		getSelectedUuid = function()
+			return selectedUuid
+		end,
+		setSelectedUuid = function(uuid)
+			selectedUuid = uuid
+		end,
+		findItemByUuid = findItemByUuid,
+		refreshInventory = function()
+			refreshInventory()
+		end,
+		refreshDetail = function()
+			refreshDetail()
+		end,
+		forgeRemote = ForgeWeapon,
+	})
+end
+
+local function isUuidInForge(uuid: string): boolean
+	return forgeApi ~= nil and forgeApi.isUuidInForge(uuid)
+end
+
+local function clearForgeAttached()
+	if forgeApi then
+		forgeApi.clear()
+	end
+end
+
+local function refreshForge()
+	if forgeApi then
+		forgeApi.refresh()
+	end
+end
+
 local detail = Instance.new("Frame")
 detail.Name = "Detail"
-detail.Size = UDim2.new(1, -20, 0.48, -16)
-detail.Position = UDim2.new(0, 10, 0.52, 0)
+detail.Size = UDim2.new(1, -20, 0.48, -120)
+detail.Position = UDim2.new(0, 10, 0.36, 108)
 detail.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
 detail.BorderSizePixel = 0
 detail.Parent = invPanel
@@ -1202,7 +1399,7 @@ assemblyTitle.Font = Enum.Font.GothamBold
 assemblyTitle.TextSize = 11
 assemblyTitle.TextColor3 = COL_MUTED
 assemblyTitle.TextXAlignment = Enum.TextXAlignment.Left
-assemblyTitle.Text = "WEAPON ASSEMBLY"
+assemblyTitle.Text = "FRAME EDIT (remove / gem)"
 assemblyTitle.Parent = assemblyPanel
 
 local partSlots = { "handle", "blade", "pommel" }
@@ -1221,10 +1418,8 @@ for i, slotName in partSlots do
 	corner(btn, 4)
 	partButtons[slotName] = btn
 	btn.MouseButton1Click:Connect(function()
-		if not selectedUuid then
-			return
-		end
-		pendingInstallSlot = slotName
+		beginAssemblyPick(slotName)
+		refreshInventory()
 	end)
 	btn.MouseButton2Click:Connect(function()
 		if not selectedUuid then
@@ -1235,7 +1430,7 @@ for i, slotName in partSlots do
 				local partUuid = (item.parts :: any)[slotName]
 				if partUuid then
 					RemoveWeaponPart:FireServer(selectedUuid, slotName)
-					pendingInstallSlot = nil
+					clearAssemblyPick()
 				end
 				break
 			end
@@ -1264,7 +1459,7 @@ for i, slotName in partSlots do
 				local partUuid = (item.parts :: any)[slotName]
 				if partUuid then
 					RemoveWeaponPart:FireServer(selectedUuid, slotName)
-					pendingInstallSlot = nil
+					clearAssemblyPick()
 				end
 				break
 			end
@@ -1416,13 +1611,11 @@ upgradeBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ========== REFRESH ==========
-local refreshDetail: () -> ()
-local refreshInventory: () -> ()
-local refreshGear: () -> ()
-local refreshSkills: () -> ()
-local refreshFilterBar: () -> ()
 
 local function matchesInvFilter(defId: string): boolean
+	if pendingInstallSlot then
+		return matchesAssemblyPick(defId)
+	end
 	if invFilter == "All" then
 		return true
 	end
@@ -1605,11 +1798,24 @@ refreshDetail = function()
 		else (def and def.name or (defId or "?"))
 
 	local isMainEquipped = selectedUuid ~= nil and snapshot.loadout.main == selectedUuid
+	local tipResolved = nil
+	if isFrame and itemData and okResolver and WeaponResolver then
+		if isMainEquipped and snapshot.resolvedMain then
+			tipResolved = snapshot.resolvedMain
+		else
+			local resolved = WeaponResolver.ResolveFrame(player.UserId, itemData, function(_uid, uuid)
+				return findItemByUuid(uuid)
+			end)
+			if resolved and resolved.complete then
+				tipResolved = resolved
+			end
+		end
+	end
 	detailDesc.Text = ItemTooltip.Build({
 		defId = defId,
 		def = def,
 		itemData = itemData,
-		resolvedMain = if isFrame and isMainEquipped then snapshot.resolvedMain else nil,
+		resolvedMain = tipResolved,
 		isEquippedMain = isMainEquipped,
 	})
 
@@ -1629,6 +1835,11 @@ refreshDetail = function()
 				local btn = partButtons[slotName]
 				if btn then
 					btn.Text = string.upper(slotName) .. "\n" .. shortName(partName, 10)
+					if pendingInstallSlot == slotName and assemblyFrameUuid == selectedUuid then
+						btn.BackgroundColor3 = COL_PENDING
+					else
+						btn.BackgroundColor3 = COL_SLOT
+					end
 				end
 			end
 			local gemName = "(empty)"
@@ -1642,6 +1853,16 @@ refreshDetail = function()
 				end
 			end
 			gemBtn.Text = "GEM\n" .. shortName(gemName, 10)
+			if pendingInstallSlot then
+				assemblyTitle.Text = `PICK {string.upper(pendingInstallSlot)} FROM BAG`
+				assemblyTitle.TextColor3 = COL_PENDING
+			else
+				assemblyTitle.Text = "WEAPON ASSEMBLY"
+				assemblyTitle.TextColor3 = COL_MUTED
+			end
+	elseif isFrame then
+		assemblyTitle.Text = "WEAPON ASSEMBLY"
+		assemblyTitle.TextColor3 = COL_MUTED
 	end
 	if defId then
 		ItemIcon.Mount(detailIconHost, defId, { zIndex = 2, yawDeg = 38, pitchDeg = -20, distanceMul = 1.7 })
@@ -1710,7 +1931,7 @@ refreshInventory = function()
 
 	local visible = {}
 	for _, item in snapshot.items do
-		if not item.installedIn and matchesInvFilter(item.defId) then
+		if not item.installedIn and not isUuidInForge(item.uuid) and matchesInvFilter(item.defId) then
 			table.insert(visible, item)
 		end
 	end
@@ -1758,9 +1979,17 @@ refreshInventory = function()
 			label.Parent = btn
 
 			btn.MouseButton1Click:Connect(function()
-				if pendingInstallSlot and selectedUuid and item.defId ~= "weapon_frame" then
-					InstallWeaponPart:FireServer(selectedUuid, item.uuid, pendingInstallSlot)
-					pendingInstallSlot = nil
+				local frameUuid = assemblyFrameUuid or selectedUuid
+				if pendingInstallSlot and frameUuid and item.defId ~= "weapon_frame" then
+					if not matchesAssemblyPick(item.defId) then
+						UiToast.Show("Incompatible part for this slot.", 2, "error")
+						return
+					end
+					InstallWeaponPart:FireServer(frameUuid, item.uuid, pendingInstallSlot)
+					clearAssemblyPick()
+					invFilter = "All"
+					selectedUuid = frameUuid
+					refreshInventory()
 					return
 				end
 				local gemDef = ItemDefs.Get(item.defId)
@@ -1780,6 +2009,9 @@ refreshInventory = function()
 				end
 				local newSelected = if selectedUuid == item.uuid then nil else item.uuid
 				selectedUuid = newSelected
+				if newSelected and newSelected ~= assemblyFrameUuid then
+					clearAssemblyPick()
+				end
 				if newSelected and TradeUI.IsActive() then
 					TradeUI.AddSelected(newSelected)
 				end
@@ -1858,7 +2090,13 @@ local function applySnapshot(data: any)
 			selectedUuid = nil
 		end
 	end
+	if forgeApi then
+		forgeApi.pruneAfterSnapshot(findItemByUuid, function()
+			UiToast.Show("Weapon forged!", 2, "success")
+		end)
+	end
 	refreshStats()
+	refreshForge()
 	refreshInventory()
 	refreshGear()
 	refreshSkills()
@@ -1876,6 +2114,7 @@ local function setOpen(state: boolean)
 	if open then
 		refreshPreview()
 		refreshStats()
+		refreshForge()
 		refreshInventory()
 		refreshGear()
 		refreshSkills()
@@ -1883,6 +2122,7 @@ local function setOpen(state: boolean)
 		clearPreview()
 		selectedUuid = nil
 		selectedAbility = nil
+		clearForgeAttached()
 	end
 end
 
@@ -1962,4 +2202,4 @@ end
 barBtn("Inventory", 8)
 barBtn("Loadout", 102)
 
-print("[GearUI] Stats | Loadout | Inventory — I/L")
+print("[GearUI] Stats | Loadout | Inventory+Forge — I/L")

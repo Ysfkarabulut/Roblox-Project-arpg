@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
 local RunService = game:GetService("RunService")
+local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
 local AnimConfig = require(ReplicatedStorage.Shared.Config.AnimConfig)
 local KeyframeClipPlayer = require(script.Parent.KeyframeClipPlayer)
 
@@ -22,9 +23,13 @@ local swingToken = 0
 local swingUntil = 0
 local holdBound = false
 local dodgeKfHandle: KeyframeClipPlayer.Handle? = nil
+--- Mixamo/AE publishes often bake bind-pose translation into Poses; playing raw doubles
+--- offsets on live R15 (limbs explode). Strip translation once per session.
+local dodgeSanitizedId: string? = nil
+local dodgeSanitizeSource: string? = nil
 
-local DODGE_TARGET_SEC = 0.55
-local DODGE_KF_NAMES = { "StandToRoll", "Stand To Roll", "DodgeRoll" }
+local DODGE_TARGET_SEC = 0.38
+
 
 local MOTOR_NAMES = {
 	rs = "RightShoulder",
@@ -52,32 +57,57 @@ local function getAnimator(char: Model): Animator?
 end
 
 local function findDodgeKeyframe(): KeyframeSequence?
-	-- Same as sprint: Studio Mixamo KFs don't play cleanly via Transform on AC-R15.
-	-- Prefer published Animation under CombatAnims, else procedural dodge.
-	if not _G.UseLocalKFClips then
-		return nil
-	end
-	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
-	if not folder then
-		return nil
-	end
-	for _, kfName in DODGE_KF_NAMES do
-		local kf = KeyframeClipPlayer.Find(folder, kfName)
-		if kf and KeyframeClipPlayer.GetDuration(kf) > 0.05 then
-			return kf
+	-- Local Mixamo KFs crumple on live AC-R15; use sanitized published Animation.
+	return nil
+end
+
+local function stripPoseTranslations(seq: KeyframeSequence): KeyframeSequence
+	local clone = seq:Clone()
+	for _, kf in clone:GetKeyframes() do
+		local function strip(pose: Pose)
+			pose.CFrame = pose.CFrame.Rotation
+			for _, child in pose:GetSubPoses() do
+				strip(child)
+			end
+		end
+		for _, pose in kf:GetPoses() do
+			strip(pose)
 		end
 	end
-	return nil
+	return clone
+end
+
+--- AE/Mixamo publishes bake bind-pose offsets into Pose translation; live R15 already
+--- has those in AnimationConstraint C0 — playing raw doubles them (limbs explode).
+local function sanitizeDodgeAnimationId(rawId: string): string
+	if dodgeSanitizedId and dodgeSanitizeSource == rawId then
+		return dodgeSanitizedId
+	end
+	local ok, seq = pcall(function()
+		return KeyframeSequenceProvider:GetKeyframeSequenceAsync(rawId)
+	end)
+	if not ok or typeof(seq) ~= "Instance" or not seq:IsA("KeyframeSequence") then
+		warn("[CombatAnim] Dodge sanitize fetch failed; using raw id")
+		return rawId
+	end
+	local stripped = stripPoseTranslations(seq)
+	local hash = KeyframeSequenceProvider:RegisterKeyframeSequence(stripped)
+	dodgeSanitizedId = hash
+	dodgeSanitizeSource = rawId
+	return hash
 end
 
 local function resolveAnimationId(name: string): string?
 	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
 	if folder then
 		if name == "Dodge" then
-			-- Studio KeyframeSequences play via KeyframeClipPlayer (RegisterAnimationClip → Length=0)
-			local anim = folder:FindFirstChild("StandToRoll") or folder:FindFirstChild("Dodge")
+			local anim = folder:FindFirstChild("Dodge")
 			if anim and anim:IsA("Animation") and anim.AnimationId ~= "" then
-				return anim.AnimationId
+				return sanitizeDodgeAnimationId(anim.AnimationId)
+			end
+			local cfg = AnimConfig.Dodge
+			if typeof(cfg) == "string" and string.sub(cfg, 1, 13) == "rbxassetid://" then
+				return sanitizeDodgeAnimationId(cfg)
 			end
 			return nil
 		end
@@ -97,6 +127,9 @@ local function resolveAnimationId(name: string): string?
 
 	local id = AnimConfig[name]
 	if typeof(id) == "string" and string.sub(id, 1, 13) == "rbxassetid://" then
+		if name == "Dodge" then
+			return sanitizeDodgeAnimationId(id)
+		end
 		return id
 	end
 	return nil
@@ -495,34 +528,31 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 			if len ~= len or len <= 0 then
 				len = 0.9
 			end
-			local speed = math.clamp(len / DODGE_TARGET_SEC, 0.85, 1.25)
+			local speed = math.clamp(len / DODGE_TARGET_SEC, 1.2, 4.5)
 			dodgeKfHandle = KeyframeClipPlayer.Play(char, dodgeKf, { looped = false, speed = speed })
-			-- Camera duck only — KF owns the body (procedural C0 tweens break on AnimationConstraint)
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			if hum then
-				local originalCam = hum.CameraOffset
-				TweenService:Create(hum, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-					CameraOffset = originalCam + Vector3.new(0, -0.7, 0),
-				}):Play()
-				task.delay(DODGE_TARGET_SEC * 0.7, function()
-					if hum.Parent then
-						TweenService:Create(hum, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-							CameraOffset = originalCam,
-						}):Play()
-					end
-				end)
-			end
 			return
 		end
 		if track then
 			track.Looped = false
+			track.Priority = Enum.AnimationPriority.Action4
 			local len = track.Length
 			if len ~= len or len <= 0 then
 				len = 0.9
 			end
-			local speed = math.clamp(len / DODGE_TARGET_SEC, 0.85, 1.25)
-			track:Play(0.08, 1, speed)
-			scheduleAutoStop("Dodge", track, DODGE_TARGET_SEC + 0.15)
+			local speed = math.clamp(len / DODGE_TARGET_SEC, 1.2, 4.5)
+			-- Mute locomotion so default Animate poses don't fight the roll
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			local animator = hum and hum:FindFirstChildOfClass("Animator")
+			if animator then
+				for _, other in animator:GetPlayingAnimationTracks() do
+					if other ~= track then
+						other:Stop(0.05)
+					end
+				end
+			end
+			track:Play(0.05, 1, speed)
+			scheduleAutoStop("Dodge", track, DODGE_TARGET_SEC + 0.08)
+			return
 		end
 		proceduralDodge(char, look, DODGE_TARGET_SEC)
 		return
@@ -573,10 +603,11 @@ function CombatAnim.ApplyHitStop(sec: number)
 	local token = hitStopToken
 	swingUntil = math.max(swingUntil, os.clock() + sec)
 
-	local saved: { { AnimationTrack, number } } = {}
+	-- Named fields avoid Studio rejecting nested positional tuple types.
+	local saved = {} :: { { track: AnimationTrack, speed: number } }
 	for _, track in animator:GetPlayingAnimationTracks() do
 		if track.Speed > 0.01 then
-			table.insert(saved, { track, track.Speed })
+			table.insert(saved, { track = track, speed = track.Speed })
 			track:AdjustSpeed(0)
 		end
 	end
@@ -586,9 +617,8 @@ function CombatAnim.ApplyHitStop(sec: number)
 			return
 		end
 		for _, pair in saved do
-			local track, speed = pair[1], pair[2]
-			if track.IsPlaying then
-				track:AdjustSpeed(speed)
+			if pair.track.IsPlaying then
+				pair.track:AdjustSpeed(pair.speed)
 			end
 		end
 	end)

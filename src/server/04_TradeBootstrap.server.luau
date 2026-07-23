@@ -5,9 +5,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
-local TradeService = require(script.Parent.Trade.TradeService)
-local LootService = require(script.Parent.Loot.LootService)
-
+-- Remotes first so clients soft-fail instead of hanging if TradeService errors.
 local existing = ReplicatedStorage:FindFirstChild("TradeRemotes")
 if existing then
 	existing:Destroy()
@@ -35,6 +33,9 @@ local TradeUpdated = remoteEvent("TradeUpdated")
 local TradeInviteReceived = remoteEvent("TradeInviteReceived")
 local OpenLootBox = remoteEvent("OpenLootBox")
 local LootBoxResult = remoteEvent("LootBoxResult")
+
+local TradeService = require(script.Parent.Trade.TradeService)
+local LootService = require(script.Parent.Loot.LootService)
 
 local invFolder = ReplicatedStorage:WaitForChild("InventoryRemotes")
 local InventoryUpdated = invFolder:WaitForChild("InventoryUpdated") :: RemoteEvent

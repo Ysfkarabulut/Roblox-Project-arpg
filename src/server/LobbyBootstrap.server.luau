@@ -10,10 +10,7 @@ if not PlaceRuntime.IsLobby() then
 	return
 end
 
-local PartyService = require(script.Parent.Lobby.PartyService)
-local QueueService = require(script.Parent.Lobby.QueueService)
-local LobbyStateService = require(script.Parent.Lobby.LobbyStateService)
-
+-- Remotes first: clients must not hang if Party/Queue modules fail to load.
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "LobbyRemotes"
 remotesFolder.Parent = ReplicatedStorage
@@ -45,6 +42,10 @@ local QueueCancel = remote("QueueCancel")
 local LobbyNotify = remote("LobbyNotify")
 local LobbyUpdated = remote("LobbyUpdated")
 local GetLobbyState = remoteFunction("GetLobbyState")
+
+local PartyService = require(script.Parent.Lobby.PartyService)
+local QueueService = require(script.Parent.Lobby.QueueService)
+local LobbyStateService = require(script.Parent.Lobby.LobbyStateService)
 
 local function notify(player: Player, ok: boolean, code: string?)
 	LobbyNotify:FireClient(player, { ok = ok, code = code })

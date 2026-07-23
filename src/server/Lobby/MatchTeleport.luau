@@ -68,7 +68,7 @@ function MatchTeleport.StartMatch(payload: MatchPayload)
 				partyUserIds = userIds,
 				partySize = math.clamp(#userIds, 1, 3),
 			})
-		if placeKey == "Pvp1v1" or placeKey == "Pvp2v2" or placeKey == "Pvp3v3" then
+		elseif placeKey == "Pvp1v1" or placeKey == "Pvp2v2" or placeKey == "Pvp3v3" then
 			local PvpMatchService = require(script.Parent.Parent.Pvp.PvpMatchService)
 			PvpMatchService.Start({
 				matchId = payload.matchId,
