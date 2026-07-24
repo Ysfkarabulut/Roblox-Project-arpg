@@ -241,7 +241,7 @@ Boss **base HP** solo için tanımlanır; party büyüdükçe **ölçeklenir** (
 | ID | Boss adı | Element | Phase | Wave? | Not |
 |----|----------|---------|-------|-------|-----|
 | `boss_01` | **The Eye** | Neutral | **3** | Hayır | İlk implement — `§4.6` |
-| `boss_02` | *TBD* | | | | |
+| `boss_02` | **The Breaker** | Steel | **3** | Hayır | Mobil melee — `§4.7` |
 | `boss_03` | *TBD* | | | | |
 
 ### 4.6 Boss spec — The Eye (`boss_01`)
@@ -360,6 +360,84 @@ Yalnızca **Rotating Beam** (1 → 2 çizgiye kadar büyür).
 #### Loot (çerçeve)
 
 - Gacha Box (şansla) + **The Eye-exclusive** drop havuzu (*item isimleri içerik fazında*)
+
+### 4.7 Boss spec — The Breaker (`boss_02`)
+
+> **Element:** Steel · **Konum:** Arena içinde **mobil** — aggro hedefini kovalar  
+> **Görsel:** Ağır zırhlı dövüşçü / golem-breaker (greybox)  
+> **Cleave yok** — melee DPS sürekli arkaya geçmek zorunda değil.
+
+#### Genel
+
+| Öğe | Değer |
+|-----|--------|
+| Arena | Eye ile aynı dairesel platform (~80 stud) |
+| Phase geçişi | **%70** HP → Phase 2 · **%30** HP → Phase 3 |
+| Hedef süre | ~**180s** |
+| Hareket | Aggro hedefine yürür; tank melee bandında tutulur |
+
+#### Phase 1 — %100 → %70
+
+**Pursuit + Aggro Strike** (Eye Iris Pulse karşılığı — tank mekaniği)
+
+| Kural | Değer |
+|-------|--------|
+| Pursuit | Boss aggro hedefine sürekli yürür (party max sprint’inden yavaş) |
+| Aggro Strike | Yalnızca **threat lideri**; LA ritmi: **1.35s** telegraf → vuruş |
+| Vuruş aralığı | **5s** (hit → hit); ilk döngü **~3.65s** sonra başlar |
+| Hasar | Orta burst; guard / parry / dodge / fortify geçerli |
+| Menzil | Aggro hedefi boss’a yakın değilse boss yaklaşır; pulse **mesafe iptal etmez** (uzak aggro = `far` ceza opsiyonel) |
+
+**Rust Mark** (P1 ikinci mekanik — herkes)
+
+| Kural | Değer |
+|-------|--------|
+| Sıklık | ~**12s** döngü (Pursuit ile çakışmayacak şekilde kodda fazlama) |
+| Hedef | Party’den **rastgele 1** oyuncu (tank ağırlığı düşük — çoğunlukla DPS/healer) |
+| Telegraf | Ayak altında kırmızı daire · **1.2s** |
+| Sonuç | Dairede kalırsan orta hasar; hareket et — **boss yönü / arka cephe şart değil** |
+
+*Tank: aggro strike soak. Melee/ranged: Rust Mark’tan kaç. Kimse sürekli flank zorunluluğu yok.*
+
+#### Phase 2 — %70 → %30
+
+**Pursuit + Aggro Strike** devam (vuruş aralığı **4s**).
+
+**Shoulder Charge**
+
+| Kural | Değer |
+|-------|--------|
+| Sıklık | ~**18s** |
+| Hedef | Party’de **en uzak** oyuncu |
+| Telegraf | **1.5s** çizgi / işaret |
+| Sonuç | Düz charge; yol üstü orta hasar; guard chip azaltır |
+
+#### Phase 3 — %30 → %0
+
+**Pursuit + Aggro Strike** devam (vuruş aralığı **3s**).
+
+**Cataclysm Slam** (caster-merkezli — herkes)
+
+| Kural | Değer |
+|-------|--------|
+| Sıklık | ~**16s** |
+| Davranış | Boss **durur**, merkezde geniş daire telegrafı |
+| Alan | Boss **HumanoidRootPart** merkezli · ~**26 stud** yarıçap (tune) |
+| Telegraf | **2.75s** (walk + guard slow + ~0.4s reaksiyon ile çıkılabilir; bkz. not) |
+| Sonuç | Alanda kalanlar yüksek hasar; **tank dahil herkes** dışarı çıkar |
+| Not | Tank-only slam yok; melee DPS flank zorunluluğu yok — **radial kaçış** |
+
+#### Roller (The Breaker)
+
+| Rol | Neden |
+|-----|--------|
+| **Tank** | Aggro + Pursuit soak; Aggro Strike guard; Cataclysm’den kaç |
+| **Melee DPS** | Rust Mark + Cataclysm kaçışı; boss’a yakın DPS — cleave yok |
+| **Ranged** | Rust Mark, Shoulder Charge, Cataclysm |
+
+#### Loot (çerçeve)
+
+- Gacha Box + **The Breaker-exclusive** drop havuzu (*Steel boss blades — içerik fazında*)
 
 ### 4.5 PvE maç akışı
 

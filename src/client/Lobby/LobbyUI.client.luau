@@ -28,6 +28,8 @@ local UiTheme = require(script.Parent.Parent.UI.UiTheme)
 
 local UiToast = require(script.Parent.Parent.UI.UiToast)
 
+local BossQueueConfig = require(ReplicatedStorage.Shared.Config.BossQueueConfig)
+
 local C = UiTheme.Colors
 
 
@@ -80,6 +82,12 @@ local state: any = nil
 
 local pendingInviteFrom: number? = nil
 
+local queueTab: "pvp" | "pve" = "pvp"
+
+local tabPvpBtn: TextButton? = nil
+
+local tabPveBtn: TextButton? = nil
+
 
 
 local gui = UiTheme.ScreenGui({
@@ -102,9 +110,9 @@ local panel = UiTheme.Panel({
 
 	name = "Panel",
 
-	size = UDim2.fromOffset(340, 480),
+	size = UDim2.fromOffset(340, 520),
 
-	position = UDim2.new(0, 12, 0.5, -240),
+	position = UDim2.new(0, 12, 0.5, -260),
 
 	visible = false,
 
@@ -266,13 +274,115 @@ local cancelBtn = UiTheme.Button({
 
 
 
+local tabRow = Instance.new("Frame")
+
+tabRow.Name = "TabRow"
+
+tabRow.Size = UDim2.new(1, -16, 0, 32)
+
+tabRow.Position = UDim2.fromOffset(8, 266)
+
+tabRow.BackgroundTransparency = 1
+
+tabRow.Parent = panel
+
+
+
+local tabLayout = Instance.new("UIListLayout")
+
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+
+tabLayout.Padding = UDim.new(0, 6)
+
+tabLayout.Parent = tabRow
+
+
+
+tabPvpBtn = UiTheme.Button({
+
+	parent = tabRow,
+
+	text = "PvP",
+
+	size = UDim2.new(0.5, -3, 1, 0),
+
+	variant = "accent",
+
+	textSize = UiTheme.TextSize.Body,
+
+})
+
+
+
+tabPveBtn = UiTheme.Button({
+
+	parent = tabRow,
+
+	text = "PvE",
+
+	size = UDim2.new(0.5, -3, 1, 0),
+
+	variant = "panel",
+
+	textSize = UiTheme.TextSize.Body,
+
+})
+
+
+
+local function refreshQueueTabs()
+
+	if tabPvpBtn then
+
+		tabPvpBtn.BackgroundColor3 = if queueTab == "pvp" then C.Accent else C.Panel
+
+		tabPvpBtn.TextColor3 = if queueTab == "pvp" then C.Text else C.TextMuted
+
+	end
+
+	if tabPveBtn then
+
+		tabPveBtn.BackgroundColor3 = if queueTab == "pve" then C.Accent else C.Panel
+
+		tabPveBtn.TextColor3 = if queueTab == "pve" then C.Text else C.TextMuted
+
+	end
+
+end
+
+
+
+tabPvpBtn.MouseButton1Click:Connect(function()
+
+	queueTab = "pvp"
+
+	refreshQueueTabs()
+
+	render()
+
+end)
+
+
+
+tabPveBtn.MouseButton1Click:Connect(function()
+
+	queueTab = "pve"
+
+	refreshQueueTabs()
+
+	render()
+
+end)
+
+
+
 local queueScroll = UiTheme.ScrollFrame({
 
 	parent = panel,
 
-	size = UDim2.new(1, -16, 1, -300),
+	size = UDim2.new(1, -16, 1, -348),
 
-	position = UDim2.fromOffset(8, 268),
+	position = UDim2.fromOffset(8, 306),
 
 })
 
@@ -419,6 +529,22 @@ local NOTIFY_TEXT = {
 	CantKickSelf = "You cannot kick yourself.",
 
 	Left = "You left the party.",
+
+	MembersNotReady = "All party members must be ready.",
+
+	WrongPartySize = "Party size does not fit this queue.",
+
+	UnknownQueue = "Unknown queue.",
+
+	InvalidBoss = "Pick a boss or Random.",
+
+	AlreadyQueued = "Already in queue.",
+
+	NoParty = "You are not in a party.",
+
+	TargetOffline = "That player is offline.",
+
+	PartyNotFound = "Party not found.",
 
 }
 
@@ -614,9 +740,13 @@ local function render()
 
 
 
+	refreshQueueTabs()
+
+
+
 	for _, child in queueScroll:GetChildren() do
 
-		if child:IsA("TextButton") then
+		if child:IsA("GuiObject") and child ~= queueList then
 
 			child:Destroy()
 
@@ -624,37 +754,173 @@ local function render()
 
 	end
 
-	if typeof(state.queues) == "table" then
 
-		for i, q in state.queues do
 
-			local btn = UiTheme.Button({
+	local order = 0
 
-				parent = queueScroll,
+	local function addSectionHeader(text: string)
 
-				text = q.label or q.id,
+		order += 1
 
-				size = UDim2.new(1, -4, 0, 34),
+		local lbl = UiTheme.Label({
 
-				variant = "panel",
+			parent = queueScroll,
 
-				font = UiTheme.Font.Body,
+			text = text,
 
-				textSize = UiTheme.TextSize.Body,
+			size = UDim2.new(1, -4, 0, 22),
 
-			})
+			textSize = UiTheme.TextSize.Caption,
 
-			btn.LayoutOrder = i
+			color = C.TextMuted,
 
-			local qid = q.id
+			bg = C.Panel,
 
-			btn.MouseButton1Click:Connect(function()
+		})
 
-				QueueStart:FireServer(qid)
+		lbl.LayoutOrder = order
 
-				status.Text = `Queued: {qid}`
+	end
 
-				status.TextColor3 = C.TextMuted
+
+
+	local function addQueueButton(label: string, onClick: () -> (), ranked: boolean?)
+
+		order += 1
+
+		local btn = UiTheme.Button({
+
+			parent = queueScroll,
+
+			text = label,
+
+			size = UDim2.new(1, -4, 0, 36),
+
+			variant = if ranked then "accent" else "panel",
+
+			font = UiTheme.Font.Body,
+
+			textSize = UiTheme.TextSize.Body,
+
+		})
+
+		btn.LayoutOrder = order
+
+		btn.MouseButton1Click:Connect(onClick)
+
+	end
+
+
+
+	local function partySize(): number
+
+		if party and party.members then
+
+			return #party.members
+
+		end
+
+		return 1
+
+	end
+
+
+
+	if queueTab == "pvp" then
+
+		local sections = if typeof(state.pvpSections) == "table" then state.pvpSections else {}
+
+		for _, section in sections do
+
+			if typeof(section.title) == "string" then
+
+				addSectionHeader(section.title)
+
+			end
+
+			local ranked = section.title == "Ranked"
+
+			local queues = if typeof(section.queues) == "table" then section.queues else {}
+
+			for _, entry in queues do
+
+				local qid = entry.queueId
+
+				local bracket = entry.label or qid
+
+				local label = `{bracket} · {section.title or "PvP"}`
+
+				addQueueButton(label, function()
+
+					QueueStart:FireServer(qid)
+
+					status.Text = `Queued: {label}`
+
+					status.TextColor3 = C.TextMuted
+
+				end, ranked)
+
+			end
+
+		end
+
+	else
+
+		local pveQueues = if typeof(state.pveQueues) == "table" then state.pveQueues else {}
+
+		local size = partySize()
+
+		local qid = pveQueues[size]
+
+
+
+		local function queueBoss(bossPref: string, label: string)
+
+			if typeof(qid) ~= "string" then
+
+				status.Text = "Boss queue needs 1–3 players in party."
+
+				status.TextColor3 = C.DangerBright
+
+				return
+
+			end
+
+			QueueStart:FireServer(qid, bossPref)
+
+			status.Text = `Queued: {label} · {size}p`
+
+			status.TextColor3 = C.TextMuted
+
+		end
+
+
+
+		local wildcard = state.pveWildcard
+
+		if typeof(wildcard) == "table" then
+
+			addQueueButton(wildcard.label or "Random", function()
+
+				queueBoss(wildcard.id, wildcard.label or "Random")
+
+			end)
+
+		end
+
+
+
+		local bosses = if typeof(state.pveBosses) == "table" then state.pveBosses else BossQueueConfig.GetBossList()
+
+		for _, boss in bosses do
+
+			local pref = boss.id
+
+			local label = boss.label or pref
+
+			addQueueButton(label, function()
+
+				queueBoss(pref, label)
 
 			end)
 

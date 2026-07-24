@@ -41,6 +41,7 @@ local SocketGem = remoteEvent("SocketGem")
 local UnsocketGem = remoteEvent("UnsocketGem")
 local CreateWeaponFrame = remoteEvent("CreateWeaponFrame")
 local ForgeWeapon = remoteEvent("ForgeWeapon")
+local ForgeResult = remoteEvent("ForgeResult")
 local AllocateStat = remoteEvent("AllocateStat")
 
 local PlayerProfileService = require(script.Parent.Profile.PlayerProfileService)
@@ -275,17 +276,25 @@ end)
 
 ForgeWeapon.OnServerEvent:Connect(function(player: Player, handleUuid: any, bladeUuid: any, pommelUuid: any, gemUuid: any)
 	if isLoadoutLocked(player.UserId) then
+		ForgeResult:FireClient(player, { ok = false, code = "LoadoutLocked" })
 		return
 	end
 	if typeof(handleUuid) ~= "string" or typeof(bladeUuid) ~= "string" or typeof(pommelUuid) ~= "string" then
+		ForgeResult:FireClient(player, { ok = false, code = "BadParts" })
 		return
 	end
-	local gem = if typeof(gemUuid) == "string" then gemUuid else nil
-	local frameUuid, err = WeaponAssemblyService.ForgeFromParts(player.UserId, handleUuid, bladeUuid, pommelUuid, gem)
+	local gem = if typeof(gemUuid) == "string" and gemUuid ~= "" then gemUuid else nil
+	local frameUuid, err, gemSkipped = WeaponAssemblyService.ForgeFromParts(player.UserId, handleUuid, bladeUuid, pommelUuid, gem)
 	if not frameUuid then
 		warn("[Forge] Failed", player.Name, err)
+		ForgeResult:FireClient(player, { ok = false, code = err or "ForgeFailed" })
 		return
 	end
+	ForgeResult:FireClient(player, {
+		ok = true,
+		frameUuid = frameUuid,
+		gemSkipped = gemSkipped,
+	})
 	HotbarService.AutoFill(player.UserId)
 	if _G.RefreshWeaponVisuals then
 		_G.RefreshWeaponVisuals(player)

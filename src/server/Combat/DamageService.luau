@@ -334,6 +334,12 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 				pressureGroupId = ctx.pressureGroupId,
 			})
 		end
+		if dealt > 0 and kind == "Boss" then
+			local BossAggroService = require(script.Parent.Parent.Boss.BossAggroService)
+			if BossAggroService.IsActive() then
+				BossAggroService.AddDamageThreat(ctx.attacker.UserId, dealt)
+			end
+		end
 	end
 
 	return {

@@ -370,6 +370,9 @@ local function render(snapshot: any)
 
 	if reason and reason ~= "NoSession" then
 		status.Text = reasonText(reason)
+		if not snapshot.ok and reason ~= "InviteSent" then
+			UiToast.Show(reasonText(reason), 2.5, "error")
+		end
 		if reason == "InviteDeclined" or reason == "PlayerNotFound" or reason == "Busy" or reason == "InvitePending" or reason == "Self" then
 			gui.Enabled = true
 			showInviteMode()

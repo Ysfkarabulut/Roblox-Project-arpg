@@ -48,6 +48,7 @@ UiTheme.DisplayOrder = {
 	Panel = 10,
 	Tutorial = 40,
 	Shop = 42,
+	Leaderboard = 44,
 	Lobby = 45,
 	Dev = 50,
 	Boss = 70,

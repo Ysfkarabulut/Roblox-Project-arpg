@@ -22,6 +22,7 @@ local RankedService = require(script.Parent.Parent.Ranked.RankedService)
 local RankedConfig = require(game.ReplicatedStorage.Shared.Config.RankedConfig)
 local LoadoutLockService = require(script.Parent.Parent.Combat.LoadoutLockService)
 local QueueConfig = require(game.ReplicatedStorage.Shared.Config.QueueConfig)
+local CareerService = require(script.Parent.Parent.Meta.CareerService)
 
 local PvpMatchService = {}
 
@@ -232,6 +233,13 @@ local function finishMatch(winningTeam: number?, winnerUserId: number?)
 	for _, plr in players do
 		local won = table.find(winners, plr.UserId) ~= nil
 		local mmr = mmrResults[plr.UserId]
+		CareerService.RecordPvpResult(plr.UserId, won, matchRanked)
+		if matchRanked and mmr and matchQueueId then
+			local bracketKey = RankedConfig.BracketKey(matchQueueId)
+			if bracketKey then
+				CareerService.UpdatePeakMmr(plr.UserId, bracketKey, mmr.mmr)
+			end
+		end
 		MatchResultBridge.FinishMatch(plr, {
 			mode = "PvP",
 			won = won,

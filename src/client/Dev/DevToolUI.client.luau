@@ -327,13 +327,16 @@ local function matchBtn(text: string, x: number, color: Color3, y: number?)
 	return btn
 end
 
-matchBtn("PvE Boss Win", 8, Color3.fromRGB(50, 110, 70)).MouseButton1Click:Connect(function()
+matchBtn("Eye Win", 8, Color3.fromRGB(50, 110, 70)).MouseButton1Click:Connect(function()
 	SimulateMatchResult:FireServer({ mode = "PvE", won = true, bossId = "eye" })
 end)
-matchBtn("PvP Win", 142, Color3.fromRGB(50, 90, 130)).MouseButton1Click:Connect(function()
+matchBtn("Breaker Win", 108, Color3.fromRGB(90, 80, 55)).MouseButton1Click:Connect(function()
+	SimulateMatchResult:FireServer({ mode = "PvE", won = true, bossId = "breaker" })
+end)
+matchBtn("PvP Win", 208, Color3.fromRGB(50, 90, 130)).MouseButton1Click:Connect(function()
 	SimulateMatchResult:FireServer({ mode = "PvP", won = true })
 end)
-matchBtn("Loss", 276, Color3.fromRGB(90, 55, 55)).MouseButton1Click:Connect(function()
+matchBtn("Loss", 8, Color3.fromRGB(90, 55, 55), 44).MouseButton1Click:Connect(function()
 	SimulateMatchResult:FireServer({ mode = "PvE", won = false, bossId = "eye" })
 end)
 
@@ -341,6 +344,9 @@ local bossRemotes = ReplicatedStorage:WaitForChild("BossRemotes")
 local StartBossDev = bossRemotes:WaitForChild("StartBossDev") :: RemoteEvent
 matchBtn("Start Eye Boss", 8, Color3.fromRGB(120, 60, 140), 44).MouseButton1Click:Connect(function()
 	StartBossDev:FireServer({ bossId = "eye" })
+end)
+matchBtn("Start Breaker", 58, Color3.fromRGB(100, 70, 50), 44).MouseButton1Click:Connect(function()
+	StartBossDev:FireServer({ bossId = "breaker" })
 end)
 
 local pvpRemotes = ReplicatedStorage:WaitForChild("PvpRemotes")

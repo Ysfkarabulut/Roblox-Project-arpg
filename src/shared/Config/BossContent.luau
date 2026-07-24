@@ -1,6 +1,6 @@
 --[[
 	Boss-exclusive weapon blades — not in lootbox / starter grants.
-	Drop source: PvE boss kill (The Eye v1 roster).
+	Drop source: PvE boss kill (Eye + Breaker rosters).
 ]]
 
 local PassiveDefs = require(script.Parent.PassiveDefs)
@@ -50,6 +50,49 @@ local BLADES = {
 		meshKey = "Crossbow_Head_Rare",
 		abilities = { "pierce_bolt_weaponactive", "direct_weaponpassive", "keen_weaponpassive" },
 		desc = "Boss: The Eye · piercing bolt line + crit/direct",
+	},
+	-- The Breaker (Steel) — MODES.md §4.7
+	{
+		id = "b_boss_rust_greatblade",
+		name = "Rust Greatblade",
+		handleType = "2H_Sword",
+		subFamily = "Sword",
+		family = "Sword",
+		rarity = "BossExclusive",
+		bossId = "breaker",
+		familyPerk = "Heavy cleave L3 ×1.35 · rust slow on slam",
+		bladeDamageMult = 1.12,
+		meshKey = "Sword2H_Blade_Rare",
+		abilities = { "slam_r_weaponactive", "direct_weaponpassive" },
+		desc = "Boss: The Breaker · ground slam + direct",
+	},
+	{
+		id = "b_boss_seismic_maul",
+		name = "Seismic Maul",
+		handleType = "2H_AxeMace",
+		subFamily = "Mace",
+		family = "Mace",
+		rarity = "BossExclusive",
+		bossId = "breaker",
+		familyPerk = "Fortify after slam · tank soak",
+		bladeDamageMult = 1.10,
+		meshKey = "Axe2H_Blade_Rare",
+		abilities = { "slam_r_weaponactive", "fortify_weaponactive", "direct_weaponpassive" },
+		desc = "Boss: The Breaker · slam + fortify wall",
+	},
+	{
+		id = "b_boss_iron_skewer",
+		name = "Iron Skewer",
+		handleType = "1H_Sword",
+		subFamily = "Sword",
+		family = "Sword",
+		rarity = "BossExclusive",
+		bossId = "breaker",
+		familyPerk = "Charge thrust L3 ×1.25 · shoulder dash",
+		bladeDamageMult = 1.08,
+		meshKey = "Sword1H_Blade_Rare",
+		abilities = { "dash_weaponactive", "keen_weaponpassive" },
+		desc = "Boss: The Breaker · dash strike + crit",
 	},
 }
 

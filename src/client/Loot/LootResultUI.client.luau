@@ -10,6 +10,7 @@ local UiTheme = require(script.Parent.Parent.UI.UiTheme)
 local C = UiTheme.Colors
 
 local ItemIcon = require(script.Parent.Parent.Inventory.ItemIcon)
+local BossEncounterConfig = require(ReplicatedStorage.Shared.Config.BossEncounterConfig)
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -188,8 +189,8 @@ local StartPvpDev = pvpRemotes and pvpRemotes:FindFirstChild("StartPvpDev")
 local lastPayload: any = nil
 
 local function sourceLabel(source: string?): string
-	if source == "BossExclusive" then
-		return "Boss Drop"
+	if source == "BossLootBox" or source == "BossExclusive" then
+		return "Boss Lootbox"
 	end
 	if source == "Gacha" then
 		return "Gacha Box"
@@ -198,7 +199,7 @@ local function sourceLabel(source: string?): string
 end
 
 local function sourceColor(source: string?): Color3
-	if source == "BossExclusive" then
+	if source == "BossLootBox" or source == "BossExclusive" then
 		return COL_BOSS
 	end
 	if source == "Gacha" then
@@ -294,7 +295,14 @@ local function show(payload: any)
 
 	local modeLine = mode
 	if bossId then
-		modeLine = `{mode} · {bossId}`
+		local def = BossEncounterConfig.Get(bossId)
+		local bossName = if def and def.displayName then def.displayName else bossId
+		modeLine = `{mode} · {bossName}`
+		if payload.firstBossClear == true then
+			modeLine ..= " · First Clear"
+		elseif typeof(payload.bossKillCount) == "number" and payload.bossKillCount > 1 then
+			modeLine ..= ` · Kill #{payload.bossKillCount}`
+		end
 	end
 	subtitle.Text = modeLine
 

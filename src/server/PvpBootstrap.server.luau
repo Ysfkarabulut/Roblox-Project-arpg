@@ -40,9 +40,25 @@ if PlaceRuntime.IsLobby() then
 		else
 			userIds = { player.UserId }
 		end
+
+		local bracket = "1v1"
+		local teams: { { number } }
+		local n = #userIds
+		if n <= 1 then
+			teams = { userIds }
+		elseif n == 2 then
+			teams = { { userIds[1] }, { userIds[2] } }
+		elseif n == 3 then
+			bracket = "2v2"
+			teams = { { userIds[1], userIds[2] }, { userIds[3] } }
+		else
+			bracket = "2v2"
+			teams = { { userIds[1], userIds[2] }, { userIds[3], userIds[4] } }
+		end
+
 		PvpMatchService.Start({
-			bracket = "1v1",
-			teams = { userIds },
+			bracket = bracket,
+			teams = teams,
 		})
 	end)
 end

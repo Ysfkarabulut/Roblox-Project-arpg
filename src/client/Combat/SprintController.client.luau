@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local AnimConfig = require(game.ReplicatedStorage.Shared.Config.AnimConfig)
+local AnimResolver = require(game.ReplicatedStorage.Shared.Config.AnimResolver)
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local StatusQuery = require(game.ReplicatedStorage.Shared.Combat.StatusQuery)
 local CombatVfx = require(script.Parent.CombatVfx)
@@ -71,29 +72,10 @@ local function findCombatAnimKf(cfg: any): KeyframeSequence?
 end
 
 --- Catalog / Animation instance id (no KeyframeSequence registration — that path is Length=0 in Play).
-local function resolveCatalogAnimId(cfg: any): string
-	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
-	if folder and typeof(cfg) == "table" then
-		local names: { string } = {}
-		if typeof(cfg.clipName) == "string" then
-			table.insert(names, cfg.clipName)
-		end
-		if typeof(cfg.clipNameAlts) == "table" then
-			for _, n in cfg.clipNameAlts do
-				if typeof(n) == "string" then
-					table.insert(names, n)
-				end
-			end
-		end
-		for _, name in names do
-			local inst = folder:FindFirstChild(name)
-			if inst and inst:IsA("Animation") and inst.AnimationId ~= "" then
-				return inst.AnimationId
-			end
-		end
-	end
-	if typeof(cfg) == "table" and typeof(cfg.animId) == "string" then
-		return cfg.animId
+local function resolveCatalogAnimId(stance: string): string
+	local resolved = AnimResolver.ResolveSprint(stance)
+	if resolved then
+		return resolved.animId
 	end
 	return AnimConfig.SprintFallback
 end
@@ -113,7 +95,7 @@ local function loadSprintTracks(char: Model)
 			sprintKf[stance] = kf
 		elseif animator then
 			local anim = Instance.new("Animation")
-			anim.AnimationId = resolveCatalogAnimId(cfg)
+			anim.AnimationId = resolveCatalogAnimId(stance)
 			local ok, track = pcall(function()
 				return animator:LoadAnimation(anim)
 			end)

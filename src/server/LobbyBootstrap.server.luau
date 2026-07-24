@@ -219,14 +219,14 @@ PartyLeave.OnServerEvent:Connect(function(player: Player)
 	broadcastParties(memberIds)
 end)
 
-QueueStart.OnServerEvent:Connect(function(leader: Player, queueId: string)
+QueueStart.OnServerEvent:Connect(function(leader: Player, queueId: string, bossPref: string?)
 	if typeof(queueId) ~= "string" then
 		return
 	end
 	if not PartyService.GetPartyForPlayer(leader.UserId) then
 		PartyService.CreateSoloParty(leader)
 	end
-	local ok, err = QueueService.Enqueue(leader, queueId)
+	local ok, err = QueueService.Enqueue(leader, queueId, bossPref :: any)
 	notify(leader, ok, err)
 	if ok then
 		broadcastParty(leader.UserId)

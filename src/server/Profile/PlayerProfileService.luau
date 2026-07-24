@@ -20,11 +20,14 @@ local StatService = require(script.Parent.Parent.Combat.StatService)
 local CurrencyService = require(script.Parent.Parent.Inventory.CurrencyService)
 local RankedService = require(script.Parent.Parent.Ranked.RankedService)
 local TutorialService = require(script.Parent.Parent.Meta.TutorialService)
+local ShopService = require(script.Parent.Parent.Meta.ShopService)
+local BossProgressService = require(script.Parent.Parent.Meta.BossProgressService)
+local CareerService = require(script.Parent.Parent.Meta.CareerService)
 
 local PlayerProfileService = {}
 
 local DATASTORE_NAME = "ARPG_PlayerProfile_v1"
-local SCHEMA_VERSION = 4
+local SCHEMA_VERSION = 7
 local AUTOSAVE_SEC = 120
 
 export type SavedItem = {
@@ -47,6 +50,11 @@ export type PlayerProfile = {
 	premium: number,
 	pvpMmr: { [string]: number }?,
 	tutorialFlags: { [string]: boolean }?,
+	shopTitles: { [string]: boolean }?,
+	bossKills: { [string]: number }?,
+	career: CareerService.CareerData?,
+	seasonStats: { [string]: CareerService.SeasonSnapshot }?,
+	seasonRewardsClaimed: { [string]: boolean }?,
 }
 
 local store = DataStoreService:GetDataStore(DATASTORE_NAME)
@@ -87,10 +95,20 @@ local function defaultProfile(): PlayerProfile
 			pvp_3v3 = 1000,
 		},
 		tutorialFlags = {},
+		shopTitles = {},
+		bossKills = {},
+		career = {
+			playtimeSec = 0,
+			pvpKills = 0,
+			pvpDeaths = 0,
+		},
+		seasonStats = {},
+		seasonRewardsClaimed = {},
 	}
 end
 
 function PlayerProfileService.Export(userId: number): PlayerProfile
+	CareerService.FlushSession(userId)
 	local items: { SavedItem } = {}
 	for _, item in InventoryService.GetItems(userId) do
 		local saved: SavedItem = {
@@ -126,6 +144,7 @@ function PlayerProfileService.Export(userId: number): PlayerProfile
 	end
 
 	local stats = StatService.Get(userId)
+	local careerExport = CareerService.Export(userId)
 	return {
 		schemaVersion = SCHEMA_VERSION,
 		items = items,
@@ -150,6 +169,11 @@ function PlayerProfileService.Export(userId: number): PlayerProfile
 		premium = CurrencyService.GetPremium(userId),
 		pvpMmr = RankedService.Export(userId),
 		tutorialFlags = TutorialService.Export(userId),
+		shopTitles = ShopService.Export(userId),
+		bossKills = BossProgressService.Export(userId),
+		career = careerExport.career,
+		seasonStats = careerExport.seasonStats,
+		seasonRewardsClaimed = careerExport.seasonRewardsClaimed,
 	}
 end
 
@@ -162,7 +186,7 @@ local function sanitizeProfile(raw: any): PlayerProfile?
 	end
 
 	local profile = defaultProfile()
-	profile.schemaVersion = raw.schemaVersion
+	profile.schemaVersion = SCHEMA_VERSION
 
 	local uuidSet: { [string]: boolean } = {}
 
@@ -291,6 +315,45 @@ local function sanitizeProfile(raw: any): PlayerProfile?
 		end
 	end
 
+	if typeof(raw.shopTitles) == "table" then
+		profile.shopTitles = {}
+		for key, val in raw.shopTitles do
+			if typeof(key) == "string" and val == true then
+				profile.shopTitles[key] = true
+			end
+		end
+	end
+
+	if typeof(raw.bossKills) == "table" then
+		profile.bossKills = {}
+		for bossId, count in raw.bossKills do
+			if typeof(bossId) == "string" and typeof(count) == "number" and count > 0 then
+				profile.bossKills[bossId] = math.floor(count)
+			end
+		end
+	end
+
+	if typeof(raw.career) == "table" then
+		profile.career = {
+			playtimeSec = math.max(0, math.floor(raw.career.playtimeSec or 0)),
+			pvpKills = math.max(0, math.floor(raw.career.pvpKills or 0)),
+			pvpDeaths = math.max(0, math.floor(raw.career.pvpDeaths or 0)),
+		}
+	end
+
+	if typeof(raw.seasonStats) == "table" then
+		profile.seasonStats = raw.seasonStats
+	end
+
+	if typeof(raw.seasonRewardsClaimed) == "table" then
+		profile.seasonRewardsClaimed = {}
+		for seasonId, claimed in raw.seasonRewardsClaimed do
+			if typeof(seasonId) == "string" and claimed == true then
+				profile.seasonRewardsClaimed[seasonId] = true
+			end
+		end
+	end
+
 	return profile
 end
 
@@ -319,6 +382,9 @@ function PlayerProfileService.Import(userId: number, profile: PlayerProfile)
 	CurrencyService.SetPremium(userId, profile.premium)
 	RankedService.Import(userId, profile.pvpMmr)
 	TutorialService.Import(userId, profile.tutorialFlags)
+	ShopService.Import(userId, profile.shopTitles)
+	BossProgressService.Import(userId, profile.bossKills)
+	CareerService.Import(userId, profile.career, profile.seasonStats, profile.seasonRewardsClaimed)
 end
 
 function PlayerProfileService.Load(userId: number): boolean
@@ -355,6 +421,7 @@ function PlayerProfileService.Save(userId: number): boolean
 end
 
 function PlayerProfileService.Release(userId: number)
+	CareerService.FlushSession(userId)
 	loaded[userId] = nil
 	lastSaveAt[userId] = nil
 	InventoryService.Clear(userId)
@@ -364,6 +431,9 @@ function PlayerProfileService.Release(userId: number)
 	CurrencyService.Clear(userId)
 	RankedService.Clear(userId)
 	TutorialService.Clear(userId)
+	ShopService.Clear(userId)
+	BossProgressService.Clear(userId)
+	CareerService.Clear(userId)
 end
 
 function PlayerProfileService.InitializePlayer(player: Player)
@@ -381,6 +451,9 @@ function PlayerProfileService.InitializePlayer(player: Player)
 
 	loaded[userId] = true
 	lastSaveAt[userId] = os.clock()
+	CareerService.StartSession(userId)
+	local SeasonRewardService = require(script.Parent.Parent.Meta.SeasonRewardService)
+	SeasonRewardService.TryAutoClaimOnJoin(userId)
 end
 
 function PlayerProfileService.SavePlayer(player: Player)

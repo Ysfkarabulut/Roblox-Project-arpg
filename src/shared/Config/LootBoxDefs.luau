@@ -41,6 +41,15 @@ local BOXES: { LootBoxDef } = {
 		desc = "Tradeable · Boss-exclusive Eye drops",
 		tradeable = true,
 	},
+	{
+		id = "lootbox_boss_breaker",
+		name = "The Breaker Lootbox",
+		lootBoxPoolId = "boss_breaker",
+		rarity = "BossExclusive",
+		bossId = "breaker",
+		desc = "Tradeable · Boss-exclusive Breaker drops",
+		tradeable = true,
+	},
 }
 
 local byBossId: { [string]: string } = {}

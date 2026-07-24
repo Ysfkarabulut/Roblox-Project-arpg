@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 
 local PlaceRuntime = require(game.ReplicatedStorage.Shared.Config.PlaceRuntime)
+local BossQueueConfig = require(game.ReplicatedStorage.Shared.Config.BossQueueConfig)
 local BossEncounterService = require(script.Parent.BossEncounterService)
 
 local BossMatchCoordinator = {}
@@ -32,8 +33,10 @@ function BossMatchCoordinator.OnPlayerAdded(player: Player)
 	if #userIds < 1 then
 		return
 	end
+	local bossPref = if typeof(data.bossId) == "string" then data.bossId else "eye"
+	local bossId = if BossQueueConfig.IsValid(bossPref) then BossQueueConfig.Resolve(bossPref :: any) else "eye"
 	BossEncounterService.Start({
-		bossId = "eye",
+		bossId = bossId,
 		partyUserIds = userIds,
 		partySize = math.clamp(#userIds, 1, 3),
 	})

@@ -10,6 +10,9 @@ local Debris = game:GetService("Debris")
 local RunService = game:GetService("RunService")
 local KeyframeSequenceProvider = game:GetService("KeyframeSequenceProvider")
 local AnimConfig = require(ReplicatedStorage.Shared.Config.AnimConfig)
+local CombatAnimDefs = require(ReplicatedStorage.Shared.Config.CombatAnimDefs)
+local AnimResolver = require(ReplicatedStorage.Shared.Config.AnimResolver)
+local CombatConfig = require(ReplicatedStorage.Shared.Config.CombatConfig)
 local KeyframeClipPlayer = require(script.Parent.KeyframeClipPlayer)
 
 local CombatAnim = {}
@@ -17,6 +20,7 @@ local CombatAnim = {}
 local ACTION_KEYS = { "Melee", "Cast", "Bow", "Buff", "Dodge" }
 
 local tracks: { [string]: AnimationTrack } = {}
+local laTracks: { [string]: AnimationTrack } = {}
 local loadedFor: Model? = nil
 local stopTokens: { [string]: number } = {}
 local swingToken = 0
@@ -28,7 +32,28 @@ local dodgeKfHandle: KeyframeClipPlayer.Handle? = nil
 local dodgeSanitizedId: string? = nil
 local dodgeSanitizeSource: string? = nil
 
-local DODGE_TARGET_SEC = 0.38
+local function dodgeTargetSec(): number
+	return CombatConfig.DodgeAnimTargetSec or 0.58
+end
+
+local function dodgeFadeIn(): number
+	return CombatConfig.DodgeAnimFadeIn or 0.22
+end
+
+local function dodgeFadeOut(): number
+	return CombatConfig.DodgeAnimFadeOut or 0.34
+end
+
+local function dodgePlayWeight(): number
+	return CombatConfig.DodgeAnimWeight or 0.9
+end
+
+local function dodgeSpeedClamp(len: number): number
+	local target = dodgeTargetSec()
+	local minSpd = CombatConfig.DodgeAnimSpeedMin or 0.88
+	local maxSpd = CombatConfig.DodgeAnimSpeedMax or 1.55
+	return math.clamp(len / target, minSpd, maxSpd)
+end
 
 
 local MOTOR_NAMES = {
@@ -97,42 +122,66 @@ local function sanitizeDodgeAnimationId(rawId: string): string
 	return hash
 end
 
+local function finalizeAnimId(resolved: AnimResolver.ResolvedClip?): string?
+	if not resolved then
+		return nil
+	end
+	if resolved.sanitizeTranslation then
+		return sanitizeDodgeAnimationId(resolved.animId)
+	end
+	return resolved.animId
+end
+
 local function resolveAnimationId(name: string): string?
-	local folder = ReplicatedStorage:FindFirstChild("CombatAnims")
-	if folder then
-		if name == "Dodge" then
-			local anim = folder:FindFirstChild("Dodge")
-			if anim and anim:IsA("Animation") and anim.AnimationId ~= "" then
-				return sanitizeDodgeAnimationId(anim.AnimationId)
-			end
-			local cfg = AnimConfig.Dodge
-			if typeof(cfg) == "string" and string.sub(cfg, 1, 13) == "rbxassetid://" then
-				return sanitizeDodgeAnimationId(cfg)
-			end
-			return nil
-		end
+	return finalizeAnimId(AnimResolver.ResolveLegacyName(name))
+end
 
-		local animInst = folder:FindFirstChild(name)
-		if animInst and animInst:IsA("Animation") and animInst.AnimationId ~= "" then
-			return animInst.AnimationId
-		end
-
-		if name == "Cast" then
-			local cast = folder:FindFirstChild("CastPoint")
-			if cast and cast:IsA("Animation") then
-				return cast.AnimationId
-			end
-		end
+local function getLaTrack(char: Model, fam: string, step: number): (AnimationTrack?, boolean)
+	local clipId = CombatAnimDefs.LaClipId(fam, step)
+	local resolved = AnimResolver.ResolveLa(fam, step)
+	if not resolved or not resolved.dedicated then
+		return nil, false
 	end
-
-	local id = AnimConfig[name]
-	if typeof(id) == "string" and string.sub(id, 1, 13) == "rbxassetid://" then
-		if name == "Dodge" then
-			return sanitizeDodgeAnimationId(id)
-		end
-		return id
+	local cached = laTracks[clipId]
+	if cached then
+		return cached, true
 	end
-	return nil
+	local animator = getAnimator(char)
+	if not animator then
+		return nil, false
+	end
+	local animId = finalizeAnimId(resolved)
+	if not animId then
+		return nil, false
+	end
+	local anim = Instance.new("Animation")
+	anim.AnimationId = animId
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(anim)
+	end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action
+		track.Looped = false
+		laTracks[clipId] = track
+		return track, true
+	end
+	return nil, false
+end
+
+local function laAttackSpeed(opts: any?): number
+	local asMult = if typeof(opts) == "table" and typeof(opts.attackSpeedMult) == "number" then opts.attackSpeedMult else 1
+	return math.clamp(asMult, 0.65, 1.45)
+end
+
+local function laStepSpeed(step: number?, asMult: number): number
+	local stepMul = if step == 3 then 0.88 elseif step == 2 then 1.0 else 1.14
+	return 1.05 * stepMul * asMult
+end
+
+local function laMaxSec(step: number?, asMult: number): number
+	local maxSec = 0.85
+	maxSec *= if step == 3 then 1.35 elseif step == 2 then 1.1 else 1
+	return maxSec / asMult
 end
 
 local function ensureTracks(char: Model)
@@ -140,6 +189,7 @@ local function ensureTracks(char: Model)
 		return
 	end
 	table.clear(tracks)
+	table.clear(laTracks)
 	table.clear(stopTokens)
 	loadedFor = char
 	local animator = getAnimator(char)
@@ -155,7 +205,9 @@ local function ensureTracks(char: Model)
 				return animator:LoadAnimation(anim)
 			end)
 			if ok and track then
-				track.Priority = Enum.AnimationPriority.Action
+				track.Priority = if name == "Dodge"
+					then Enum.AnimationPriority.Action3
+					else Enum.AnimationPriority.Action
 				track.Looped = false
 				tracks[name] = track
 			end
@@ -172,9 +224,10 @@ local function stopActionTracks(fade: number?)
 	end
 end
 
-local function scheduleAutoStop(name: string, track: AnimationTrack, maxSec: number)
+local function scheduleAutoStop(name: string, track: AnimationTrack, maxSec: number, fadeOut: number?)
 	local token = (stopTokens[name] or 0) + 1
 	stopTokens[name] = token
+	local outFade = fadeOut or 0.2
 	task.delay(0.05, function()
 		if stopTokens[name] ~= token then
 			return
@@ -189,7 +242,7 @@ local function scheduleAutoStop(name: string, track: AnimationTrack, maxSec: num
 				return
 			end
 			if track.IsPlaying then
-				track:Stop(0.2)
+				track:Stop(outFade)
 			end
 		end)
 	end)
@@ -517,7 +570,7 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 
 	local track = tracks[base] or (if base == "Dodge" then nil else tracks.Melee)
 	if base == "Dodge" then
-		stopActionTracks(0.1)
+		stopActionTracks(0.18)
 		if dodgeKfHandle then
 			dodgeKfHandle.stop()
 			dodgeKfHandle = nil
@@ -528,41 +581,46 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 			if len ~= len or len <= 0 then
 				len = 0.9
 			end
-			local speed = math.clamp(len / DODGE_TARGET_SEC, 1.2, 4.5)
+			local speed = dodgeSpeedClamp(len)
 			dodgeKfHandle = KeyframeClipPlayer.Play(char, dodgeKf, { looped = false, speed = speed })
 			return
 		end
 		if track then
 			track.Looped = false
-			track.Priority = Enum.AnimationPriority.Action4
+			track.Priority = Enum.AnimationPriority.Action3
 			local len = track.Length
 			if len ~= len or len <= 0 then
 				len = 0.9
 			end
-			local speed = math.clamp(len / DODGE_TARGET_SEC, 1.2, 4.5)
-			-- Mute locomotion so default Animate poses don't fight the roll
-			local hum = char:FindFirstChildOfClass("Humanoid")
-			local animator = hum and hum:FindFirstChildOfClass("Animator")
-			if animator then
-				for _, other in animator:GetPlayingAnimationTracks() do
-					if other ~= track then
-						other:Stop(0.05)
-					end
-				end
-			end
-			track:Play(0.05, 1, speed)
-			scheduleAutoStop("Dodge", track, DODGE_TARGET_SEC + 0.08)
+			local speed = dodgeSpeedClamp(len)
+			local fadeIn = dodgeFadeIn()
+			local fadeOut = dodgeFadeOut()
+			local targetSec = dodgeTargetSec()
+			-- Blend over locomotion — do not hard-stop walk/run (was causing snap).
+			track:Play(fadeIn, dodgePlayWeight(), speed)
+			scheduleAutoStop("Dodge", track, targetSec + 0.12, fadeOut)
 			return
 		end
-		proceduralDodge(char, look, DODGE_TARGET_SEC)
+		proceduralDodge(char, look, dodgeTargetSec())
 		return
+	end
+
+	if fam and step then
+		local asMult = laAttackSpeed(opts)
+		local laTrack, dedicated = getLaTrack(char, fam, step)
+		if dedicated and laTrack then
+			stopActionTracks(0.08)
+			laTrack.Looped = false
+			laTrack:Play(0.05, 1, laStepSpeed(step, asMult))
+			scheduleAutoStop(CombatAnimDefs.LaClipId(fam, step), laTrack, laMaxSec(step, asMult))
+			return
+		end
 	end
 
 	if track then
 		stopActionTracks(0.08)
 		track.Looped = false
-		local asMult = if typeof(opts) == "table" and typeof(opts.attackSpeedMult) == "number" then opts.attackSpeedMult else 1
-		asMult = math.clamp(asMult, 0.65, 1.45)
+		local asMult = laAttackSpeed(opts)
 		local stepMul = if step == 3 then 0.88 elseif step == 2 then 1.0 else 1.14
 		local speed = if base == "Cast" then (1.15 * asMult / (if step == 3 then 1.28 elseif step == 2 then 1.1 else 1)) else (1.05 * stepMul * asMult)
 		track:Play(0.05, 1, speed)
@@ -573,8 +631,7 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 	end
 
 	if fam and step then
-		local asMult = if typeof(opts) == "table" and typeof(opts.attackSpeedMult) == "number" then opts.attackSpeedMult else 1
-		proceduralSwing(char, fam, step, asMult)
+		proceduralSwing(char, fam, step, laAttackSpeed(opts))
 	end
 end
 
@@ -701,11 +758,205 @@ Players.LocalPlayer.CharacterAdded:Connect(function()
 		dodgeKfHandle = nil
 	end
 	table.clear(tracks)
+	table.clear(laTracks)
 	table.clear(stopTokens)
 	loadedFor = nil
 	swingToken += 1
 	dodgeLeanToken += 1
 	swingUntil = 0
 end)
+
+local remoteByChar: { [Model]: { tracks: { [string]: AnimationTrack }, stopTokens: { [string]: number } } } = {}
+
+local function getRemoteState(char: Model)
+	if not remoteByChar[char] then
+		remoteByChar[char] = { tracks = {}, stopTokens = {} }
+		char.Destroying:Once(function()
+			remoteByChar[char] = nil
+		end)
+	end
+	return remoteByChar[char]
+end
+
+local function ensureRemoteTracks(char: Model)
+	local state = getRemoteState(char)
+	if next(state.tracks) then
+		return state
+	end
+	local animator = getAnimator(char)
+	if not animator then
+		return state
+	end
+	for _, name in ACTION_KEYS do
+		local id = resolveAnimationId(name)
+		if id then
+			local anim = Instance.new("Animation")
+			anim.AnimationId = id
+			local ok, track = pcall(function()
+				return animator:LoadAnimation(anim)
+			end)
+			if ok and track then
+				track.Priority = if name == "Dodge"
+					then Enum.AnimationPriority.Action3
+					else Enum.AnimationPriority.Action
+				track.Looped = false
+				state.tracks[name] = track
+			end
+		end
+	end
+	return state
+end
+
+local function stopRemoteTracks(state: { tracks: { [string]: AnimationTrack } }, fade: number)
+	for _, track in state.tracks do
+		if track.IsPlaying then
+			track:Stop(fade)
+		end
+	end
+end
+
+local function scheduleRemoteStop(
+	state: { stopTokens: { [string]: number } },
+	name: string,
+	track: AnimationTrack,
+	maxSec: number,
+	fadeOut: number?
+)
+	local token = (state.stopTokens[name] or 0) + 1
+	state.stopTokens[name] = token
+	local outFade = fadeOut or 0.15
+	task.delay(maxSec, function()
+		if state.stopTokens[name] ~= token then
+			return
+		end
+		if track.IsPlaying then
+			track:Stop(outFade)
+		end
+	end)
+end
+
+local function faceCharacterFlat(char: Model, look: Vector3?)
+	if typeof(look) ~= "Vector3" then
+		return
+	end
+	local hrp = char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then
+		return
+	end
+	local flat = Vector3.new(look.X, 0, look.Z)
+	if flat.Magnitude < 0.1 then
+		return
+	end
+	hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+end
+
+local function resolvePlayBase(kind: string, family: string?, fam: string?, step: number?): string
+	local base = "Melee"
+	if kind == "Cast" or kind == "Buff" then
+		base = kind
+	elseif kind == "Bow" or (fam and (fam == "Bow" or fam == "Crossbow")) then
+		base = "Bow"
+	elseif kind == "Dodge" then
+		base = "Dodge"
+	elseif fam and (fam == "Wand" or fam == "Staff" or fam == "Scepter") then
+		base = "Cast"
+	end
+	return base
+end
+
+--- Other players' combat animations (replicated CombatFx).
+function CombatAnim.PlayOnCharacter(char: Model, kind: string, family: string?, comboStep: number?, opts: any?)
+	if not char or not char.Parent then
+		return
+	end
+
+	local fam = family
+	local step = comboStep
+	if (not fam or not step) and typeof(kind) == "string" and string.find(kind, "_L") then
+		local f, st = string.match(kind, "^(.+)_L(%d)$")
+		if f and st then
+			fam = fam or f
+			step = step or tonumber(st)
+		end
+	end
+
+	local look: Vector3? = if typeof(opts) == "table" and typeof(opts.look) == "Vector3" then opts.look else nil
+	local base = resolvePlayBase(kind, family, fam, step)
+
+	if base == "Dodge" then
+		CombatAnim.PlayRemoteDodge(char, look)
+		return
+	end
+
+	local state = ensureRemoteTracks(char)
+	local track = state.tracks[base] or state.tracks.Melee
+	if not track then
+		return
+	end
+
+	if fam and step then
+		local laResolved = AnimResolver.ResolveLa(fam, step)
+		if laResolved and laResolved.dedicated then
+			local laId = CombatAnimDefs.LaClipId(fam, step)
+			local laTrack = state.tracks[laId]
+			if not laTrack then
+				local animId = finalizeAnimId(laResolved)
+				local animator = getAnimator(char)
+				if animId and animator then
+					local anim = Instance.new("Animation")
+					anim.AnimationId = animId
+					local ok, loaded = pcall(function()
+						return animator:LoadAnimation(anim)
+					end)
+					if ok and loaded then
+						loaded.Priority = Enum.AnimationPriority.Action
+						loaded.Looped = false
+						state.tracks[laId] = loaded
+						laTrack = loaded
+					end
+				end
+			end
+			if laTrack then
+				stopRemoteTracks(state, 0.08)
+				local asMult = laAttackSpeed(opts)
+				laTrack.Looped = false
+				laTrack:Play(0.08, 0.85, laStepSpeed(step, asMult))
+				scheduleRemoteStop(state, laId, laTrack, laMaxSec(step, asMult), 0.15)
+				return
+			end
+		end
+	end
+
+	stopRemoteTracks(state, 0.08)
+	track.Looped = false
+	local asMult = laAttackSpeed(opts)
+	local stepMul = if step == 3 then 0.88 elseif step == 2 then 1.0 else 1.14
+	local speed = if base == "Cast" then (1.15 * asMult / (if step == 3 then 1.28 elseif step == 2 then 1.1 else 1)) else (1.05 * stepMul * asMult)
+	track:Play(0.08, 0.85, speed)
+	local maxSec = if base == "Cast" or base == "Buff" then 0.65 else 0.85
+	maxSec *= if step == 3 then 1.35 elseif step == 2 then 1.1 else 1
+	maxSec /= asMult
+	scheduleRemoteStop(state, base, track, maxSec, 0.15)
+end
+
+--- Other players' dodge roll (replicated CombatFx).
+function CombatAnim.PlayRemoteDodge(char: Model, look: Vector3?)
+	if not char or not char.Parent then
+		return
+	end
+	faceCharacterFlat(char, look)
+	local state = ensureRemoteTracks(char)
+	local track = state.tracks.Dodge
+	if not track then
+		return
+	end
+	local len = track.Length
+	if len ~= len or len <= 0 then
+		len = 0.9
+	end
+	local speed = dodgeSpeedClamp(len)
+	track:Play(dodgeFadeIn(), dodgePlayWeight(), speed)
+	scheduleRemoteStop(state, "Dodge", track, dodgeTargetSec() + 0.12, dodgeFadeOut())
+end
 
 return CombatAnim

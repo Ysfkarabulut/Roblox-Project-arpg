@@ -33,6 +33,8 @@ export type MountDeps = {
 	refreshInventory: () -> (),
 	refreshDetail: () -> (),
 	forgeRemote: RemoteEvent,
+	showConfirm: (title: string, body: string, onYes: () -> ()) -> (),
+	onForgeWithoutGem: () -> (),
 }
 
 local FORGE_SLOT_ORDER = { "handle", "blade", "pommel", "gem" }
@@ -80,7 +82,7 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 	forgeHint.TextSize = 10
 	forgeHint.TextColor3 = deps.colors.muted
 	forgeHint.TextXAlignment = Enum.TextXAlignment.Left
-	forgeHint.Text = "Empty slot click = detach · needs Handle + Blade + Pommel"
+	forgeHint.Text = "Attach gem for element · no gem asks confirmation (Neutral)"
 	forgeHint.Parent = forgePanel
 
 	local forgeButtons: { [string]: TextButton } = {}
@@ -120,6 +122,9 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 		local needKind = FORGE_SLOT_KIND[slotName]
 		if def.kind ~= needKind then
 			return false, "WrongPart"
+		end
+		if slotName == "gem" and def.element == "Neutral" then
+			return false, "NoNeutralGem"
 		end
 		if slotName == "blade" or slotName == "pommel" then
 			local handleUuid = attached.handle
@@ -250,13 +255,60 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 		end)
 	end
 
+	local function describeGemIssue(): string?
+		local gemUuid = attached.gem
+		if not gemUuid then
+			return nil
+		end
+		local item = deps.findItemByUuid(gemUuid)
+		if not item then
+			return "The attached gem is missing from your bag."
+		end
+		if item.installedIn then
+			return "That gem is already installed on another item."
+		end
+		local def = ItemDefs.Get(item.defId)
+		if not def or def.kind ~= "ElementGem" then
+			return "The attached slot is not a valid element gem."
+		end
+		if def.element == "Neutral" then
+			return "Neutral is not a gem — remove it from the forge slot."
+		end
+		return nil
+	end
+
 	forgeBtn.MouseButton1Click:Connect(function()
 		if not attached.handle or not attached.blade or not attached.pommel then
 			deps.toast("Attach Handle + Blade + Pommel first.", 2.5, "warn")
 			return
 		end
-		deps.forgeRemote:FireServer(attached.handle, attached.blade, attached.pommel, attached.gem)
-		deps.toast("Forging…", 1.5, "info")
+		local function doForge()
+			if not attached.gem then
+				deps.onForgeWithoutGem()
+			end
+			deps.forgeRemote:FireServer(attached.handle, attached.blade, attached.pommel, attached.gem)
+		end
+		local gemIssue = describeGemIssue()
+		if gemIssue then
+			deps.showConfirm(
+				"Gem Cannot Be Socketed",
+				`{gemIssue}\n\nForge without this gem? The weapon will be Neutral (Unbound).`,
+				function()
+					attached.gem = nil
+					doForge()
+				end
+			)
+			return
+		end
+		if not attached.gem then
+			deps.showConfirm(
+				"No Gem Attached",
+				"No element gem is in the forge slot.\n\nThe weapon will be Neutral (Unbound) with no signature status.\n\nAttach a gem first, or confirm to forge without one.",
+				doForge
+			)
+			return
+		end
+		doForge()
 	end)
 
 	local function pruneAfterSnapshot(findItem: (uuid: string?) -> any, onForged: (() -> ())?)

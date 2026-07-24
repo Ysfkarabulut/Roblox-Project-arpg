@@ -14,6 +14,41 @@ function ShopService.HasTitle(userId: number, title: string): boolean
 	return bag ~= nil and bag[title] == true
 end
 
+function ShopService.Ensure(userId: number)
+	if not titlesByUser[userId] then
+		titlesByUser[userId] = {}
+	end
+end
+
+function ShopService.GrantTitle(userId: number, title: string)
+	if typeof(title) ~= "string" or title == "" then
+		return
+	end
+	ShopService.Ensure(userId)
+	titlesByUser[userId][title] = true
+end
+
+function ShopService.Export(userId: number): { [string]: boolean }
+	ShopService.Ensure(userId)
+	return table.clone(titlesByUser[userId])
+end
+
+function ShopService.Import(userId: number, titles: { [string]: boolean }?)
+	ShopService.Ensure(userId)
+	if typeof(titles) ~= "table" then
+		return
+	end
+	for key, val in titles do
+		if typeof(key) == "string" and val == true then
+			titlesByUser[userId][key] = true
+		end
+	end
+end
+
+function ShopService.Clear(userId: number)
+	titlesByUser[userId] = nil
+end
+
 function ShopService.Purchase(userId: number, offerId: string): (boolean, string?)
 	for _, offer in ShopConfig.Offers do
 		if offer.id ~= offerId then
@@ -32,8 +67,7 @@ function ShopService.Purchase(userId: number, offerId: string): (boolean, string
 				CurrencyService.AddPremium(userId, offer.premium)
 			end
 			if typeof(offer.title) == "string" and offer.title ~= "" then
-				titlesByUser[userId] = titlesByUser[userId] or {}
-				titlesByUser[userId][offer.title] = true
+				ShopService.GrantTitle(userId, offer.title)
 			end
 			return true, nil
 		end
@@ -45,8 +79,7 @@ function ShopService.Purchase(userId: number, offerId: string): (boolean, string
 			CurrencyService.AddPremium(userId, offer.premium)
 		end
 		if typeof(offer.title) == "string" and offer.title ~= "" then
-			titlesByUser[userId] = titlesByUser[userId] or {}
-			titlesByUser[userId][offer.title] = true
+			ShopService.GrantTitle(userId, offer.title)
 		end
 		if typeof(offer.itemGrant) == "string" and offer.itemGrant ~= "" then
 			local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)

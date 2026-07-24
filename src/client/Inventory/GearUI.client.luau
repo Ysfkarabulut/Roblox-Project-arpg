@@ -158,6 +158,7 @@ local SocketGem = remotes:WaitForChild("SocketGem") :: RemoteEvent
 local UnsocketGem = remotes:WaitForChild("UnsocketGem") :: RemoteEvent
 local CreateWeaponFrame = remotes:WaitForChild("CreateWeaponFrame") :: RemoteEvent
 local ForgeWeapon = remotes:WaitForChild("ForgeWeapon") :: RemoteEvent
+local ForgeResult = remotes:WaitForChild("ForgeResult") :: RemoteEvent
 local AllocateStat = remotes:WaitForChild("AllocateStat") :: RemoteEvent
 
 local UpgradeItem: RemoteEvent? = nil
@@ -203,6 +204,32 @@ local pendingConfirmAction: (() -> ())? = nil
 local gemUnsocketMode = false
 local pendingGemUnsocketUuid: string? = nil
 local forgeApi: any = nil
+local pendingForgeResult: { ok: boolean, gemSkipped: string? }? = nil
+local pendingForgeNeutral = false
+
+local FORGE_ERROR_MESSAGES: { [string]: string } = {
+	BadParts = "Invalid forge parts.",
+	DuplicateParts = "Same part attached twice.",
+	NotOwned = "One or more parts are missing from your bag.",
+	AlreadyInstalled = "A part is already installed on another weapon.",
+	NeedHandle = "Attach a valid handle.",
+	NeedBlade = "Attach a valid blade.",
+	NeedPommel = "Attach a valid pommel or string.",
+	IncompatibleHandle = "Blade or pommel does not fit this handle.",
+	WrongPartKind = "Wrong part type for that slot.",
+	NeedString = "This handle needs a string, not a pommel.",
+	InstallHandleFirst = "Install the handle first.",
+	FrameFailed = "Could not create weapon frame.",
+	LoadoutLocked = "Cannot forge during a match.",
+	ForgeFailed = "Forge failed.",
+}
+
+local function forgeErrorMessage(code: string?): string
+	if code and FORGE_ERROR_MESSAGES[code] then
+		return FORGE_ERROR_MESSAGES[code]
+	end
+	return if code then `Forge failed: {code}` else "Forge failed."
+end
 
 local FILTER_OPTIONS = {
 	{ id = "All", label = "All" },
@@ -575,7 +602,11 @@ local function secondaryFromStats()
 	local s = snapshot.stats
 	local d = snapshot.derived
 	local str, dex, vit, int_ = s.STR or 10, s.DEX or 10, s.VIT or 10, s.INT or 10
-	local critChance = math.min(CombatConfig.BaseCrit + dex * CombatConfig.KDexCrit, CombatConfig.CritChanceCap)
+	local critPass = d.passiveCritChance or 0
+	local critChance = math.min(CombatConfig.BaseCrit + dex * CombatConfig.KDexCrit + critPass, CombatConfig.CritChanceCap)
+	local critLabel = if critPass > 0.01
+		then string.format("%.1f%% (+%.0f gear)", critChance, critPass)
+		else string.format("%.1f%%", critChance)
 	local critDmg = math.min(CombatConfig.BaseCritDmg + str * CombatConfig.KStrCritDmg, CombatConfig.CritDmgCap)
 	local asMult = math.min(1 + dex * CombatConfig.KDexAs, CombatConfig.AsCap)
 	local defence = d.totalDefence or d.defenceFromVit or (vit * CombatConfig.KVitDef)
@@ -583,17 +614,24 @@ local function secondaryFromStats()
 	local dr = math.min(defence * CombatConfig.KDr, CombatConfig.DrCapPvp)
 	local statusPot = int_ * 0.5 + (d.passiveStatusPotency or 0)
 	local buffPot = d.totalBuffPotency or (int_ * 0.25 + (d.passiveBuffPotency or 0))
-	return {
+	local directMult = d.passiveDirectMult or 1
+	local directBonus = math.max(0, (directMult - 1) * 100)
+	local directLabel = if directBonus > 0.5
+		then string.format("+%.0f%%", directBonus)
+		else "—"
+	local rows = {
 		{ "HP", string.format("%d", math.floor(d.hp or 0)), Color3.fromRGB(100, 220, 130) },
 		{ "Stamina", string.format("%d", math.floor(d.stamina or 0)), Color3.fromRGB(240, 210, 80) },
 		{ "Defence", string.format("%.0f  (DR %.0f%%)", defence, dr), Color3.fromRGB(120, 190, 255) },
 		{ "Resist", string.format("%.0f", resist), Color3.fromRGB(150, 200, 255) },
-		{ "Crit Chance", string.format("%.1f%%", critChance), Color3.fromRGB(255, 180, 100) },
+		{ "Crit Chance", critLabel, Color3.fromRGB(255, 180, 100) },
 		{ "Crit Damage", string.format("%.0f%%", critDmg), Color3.fromRGB(255, 120, 100) },
 		{ "Attack Speed", string.format("%.0f%%", asMult * 100), Color3.fromRGB(180, 255, 180) },
+		{ "Direct Damage", directLabel, Color3.fromRGB(255, 150, 110) },
 		{ "Status Potency", string.format("+%.0f", statusPot), Color3.fromRGB(200, 150, 255) },
 		{ "Buff Potency", string.format("+%.0f", buffPot), Color3.fromRGB(180, 160, 255) },
 	}
+	return rows
 end
 
 -- Overlay
@@ -1151,6 +1189,10 @@ do
 			refreshDetail()
 		end,
 		forgeRemote = ForgeWeapon,
+		showConfirm = showConfirm,
+		onForgeWithoutGem = function()
+			pendingForgeNeutral = true
+		end,
 	})
 end
 
@@ -2092,7 +2134,15 @@ local function applySnapshot(data: any)
 	end
 	if forgeApi then
 		forgeApi.pruneAfterSnapshot(findItemByUuid, function()
-			UiToast.Show("Weapon forged!", 2, "success")
+			if pendingForgeNeutral then
+				UiToast.Show("Weapon forged (Neutral — no gem).", 3, "success")
+				pendingForgeNeutral = false
+			elseif pendingForgeResult and pendingForgeResult.gemSkipped then
+				UiToast.Show("Weapon forged (Neutral — gem not applied).", 3, "warn")
+			else
+				UiToast.Show("Weapon forged!", 2, "success")
+			end
+			pendingForgeResult = nil
 		end)
 	end
 	refreshStats()
@@ -2133,6 +2183,22 @@ if loadCloseBtn then
 end
 
 InventoryUpdated.OnClientEvent:Connect(applySnapshot)
+
+ForgeResult.OnClientEvent:Connect(function(result: any)
+	if typeof(result) ~= "table" then
+		return
+	end
+	if result.ok ~= true then
+		pendingForgeResult = nil
+		pendingForgeNeutral = false
+		UiToast.Show(forgeErrorMessage(result.code), 3, "error")
+		return
+	end
+	pendingForgeResult = {
+		ok = true,
+		gemSkipped = result.gemSkipped,
+	}
+end)
 
 task.spawn(function()
 	local ok, data = pcall(function()

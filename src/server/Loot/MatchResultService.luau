@@ -4,6 +4,8 @@
 
 local LootTables = require(game.ReplicatedStorage.Shared.Config.LootTables)
 local LootService = require(script.Parent.LootService)
+local BossProgressService = require(script.Parent.Parent.Meta.BossProgressService)
+local CareerService = require(script.Parent.Parent.Meta.CareerService)
 
 local MatchResultService = {}
 
@@ -23,6 +25,8 @@ export type ProcessOutput = {
 	xpGained: number,
 	gachaGranted: LootService.GrantedItem?,
 	bossGranted: LootService.GrantedItem?,
+	bossKillCount: number?,
+	firstBossClear: boolean?,
 }
 
 function MatchResultService.Process(userId: number, result: MatchResult): ProcessOutput
@@ -49,11 +53,20 @@ function MatchResultService.Process(userId: number, result: MatchResult): Proces
 		end
 	end
 
-	if source == "PvE" and result.bossId and LootTables.ShouldRollBossExclusive(source) then
-		local boxId = LootService.BossLootBoxId(result.bossId)
-		if boxId then
-			out.bossGranted = LootService.GrantDefId(userId, boxId, "BossLootBox")
+	if source == "PvE" and result.bossId then
+		local bossId = result.bossId
+		local firstClear = BossProgressService.GetKills(userId, bossId) == 0
+		local rollBoss = firstClear or LootTables.ShouldRollBossExclusive(source)
+		if rollBoss then
+			local boxId = LootService.BossLootBoxId(bossId)
+			if boxId then
+				out.bossGranted = LootService.GrantDefId(userId, boxId, "BossLootBox")
+			end
 		end
+		local killCount = BossProgressService.RecordKill(userId, bossId)
+		CareerService.RecordBossKill(userId, bossId)
+		out.bossKillCount = killCount
+		out.firstBossClear = firstClear
 	end
 
 	return out

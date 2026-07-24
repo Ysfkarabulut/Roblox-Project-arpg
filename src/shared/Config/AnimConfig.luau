@@ -1,23 +1,28 @@
 --[[
-	Family LA anim keys + element colors.
-	Catalog ids are shared bases; CombatAnim layers procedural swing by family/step.
+	Animation runtime data + backward-compatible exports.
+	Clip ids / catalog: CombatAnimDefs.luau — edit there (or CombatAnims folder) only.
 ]]
 
-local AnimConfig = {
-	Idle = "rbxassetid://507766666",
-	Walk = "rbxassetid://507777826",
-	Run = "rbxassetid://507767714",
-	Jump = "rbxassetid://507765000",
-	Fall = "rbxassetid://507767968",
+local CombatAnimDefs = require(script.Parent.CombatAnimDefs)
+local AnimResolver = require(script.Parent.AnimResolver)
 
-	-- Base action tracks
-	Melee = "rbxassetid://522635514", -- tool slash
-	Cast = "rbxassetid://507770453", -- point (short; wave was sticking)
-	Bow = "rbxassetid://522638767", -- tool lunge
-	Buff = "rbxassetid://507770453",
-	-- Dodge: published Mixamo roll; CombatAnim strips Pose translations at runtime
-	-- (raw AE publish doubles bind offsets on live R15 → exploded limbs).
-	Dodge = "rbxassetid://136179211599391",
+local function legacyAnimId(legacyName: string): string?
+	local resolved = AnimResolver.ResolveLegacyName(legacyName)
+	return if resolved then resolved.animId else nil
+end
+
+local AnimConfig = {
+	-- Locomotion + combat bases (legacy field names → catalog)
+	Idle = legacyAnimId("Idle"),
+	Walk = legacyAnimId("Walk"),
+	Run = legacyAnimId("Run"),
+	Jump = legacyAnimId("Jump"),
+	Fall = legacyAnimId("Fall"),
+	Melee = legacyAnimId("Melee"),
+	Cast = legacyAnimId("Cast"),
+	Bow = legacyAnimId("Bow"),
+	Buff = legacyAnimId("Buff"),
+	Dodge = legacyAnimId("Dodge"),
 
 	-- Weapon weld swing: pitch/yaw/roll degrees over duration
 	SwingProfile = {
@@ -180,59 +185,25 @@ AnimConfig.ReactionColor = {
 	CausticBurn = Color3.fromRGB(180, 255, 60),
 }
 
---[[
-	7 sprint styles — catalog IDs by default; optional CombatAnims KeyframeSequence
-	override via clipName (e.g. Mixamo Great Sword Run → Sprint_TwoHandMelee).
-]]
-AnimConfig.Sprint = {
-	OneHandShield = {
-		animId = "rbxassetid://913384386", -- shield-forward run
-		speed = 1.05,
-		lean = 8,
-		label = "1H+Shield",
-	},
-	OneHandFocus = {
-		animId = "rbxassetid://913376220",
-		speed = 1.15,
-		lean = 12,
-		label = "1H+Focus",
-	},
-	DualWield = {
-		animId = "rbxassetid://891621366",
-		speed = 1.2,
-		lean = 14,
-		label = "1H+1H",
-	},
-	TwoHandMelee = {
-		animId = "rbxassetid://913402848",
-		-- Prefer local Mixamo clip when present in ReplicatedStorage.CombatAnims
-		clipName = "Sprint_TwoHandMelee",
-		clipNameAlts = { "GreatSwordRun", "Great Sword Run" },
-		speed = 0.92,
-		lean = 5,
-		label = "2H Melee",
-	},
-	Crossbow = {
-		animId = "rbxassetid://891636393",
-		speed = 0.9,
-		lean = 4,
-		label = "Crossbow",
-	},
-	Bow = {
-		animId = "rbxassetid://913390065",
-		speed = 1.1,
-		lean = 10,
-		label = "Bow",
-	},
-	Staff = {
-		animId = "rbxassetid://507767714", -- classic run (distinct from shield)
-		speed = 1.0,
-		lean = 7,
-		label = "Staff",
-	},
-}
+-- Sprint table built from catalog (stance key → { animId, clipName, speed, lean, label })
+AnimConfig.Sprint = {}
+for stanceId in CombatAnimDefs.SprintByStance do
+	local resolved = AnimResolver.ResolveSprint(stanceId)
+	local clipId = CombatAnimDefs.SprintClipId(stanceId)
+	local def = if clipId then CombatAnimDefs.Get(clipId) else nil
+	if resolved and def then
+		AnimConfig.Sprint[stanceId] = {
+			animId = resolved.animId,
+			clipName = def.clipName,
+			clipNameAlts = def.clipNameAlts,
+			speed = def.speed,
+			lean = def.lean,
+			label = def.label,
+		}
+	end
+end
 
--- Fallback if a catalog id fails to load
-AnimConfig.SprintFallback = "rbxassetid://507767714"
+local sprintFallback = AnimResolver.ResolveById(CombatAnimDefs.SprintFallbackId())
+AnimConfig.SprintFallback = if sprintFallback then sprintFallback.animId else legacyAnimId("Run")
 
 return AnimConfig

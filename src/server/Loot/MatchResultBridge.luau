@@ -46,6 +46,8 @@ export type LootResultPayload = {
 	mmrTier: string?,
 	gacha: LootEntryClient?,
 	bossDrop: LootEntryClient?,
+	firstBossClear: boolean?,
+	bossKillCount: number?,
 }
 
 local lootResultRemote: RemoteEvent? = nil
@@ -145,6 +147,8 @@ local function fireLootResult(
 		mmrTier = result.mmrTier,
 		gacha = formatGrant(out.gachaGranted),
 		bossDrop = formatGrant(out.bossGranted),
+		firstBossClear = out.firstBossClear == true,
+		bossKillCount = out.bossKillCount,
 	}
 	lootResultRemote:FireClient(player, payload)
 end
@@ -162,6 +166,8 @@ function MatchResultBridge.FinishMatch(player: Player, result: MatchResultServic
 			(out.xpGained and out.xpGained > 0)
 			or out.gachaGranted ~= nil
 			or out.bossGranted ~= nil
+			or out.bossKillCount ~= nil
+			or result.mode == "PvP"
 			or (xpResult and xpResult.levelsGained > 0)
 			or result.mmrDelta ~= nil
 		)

@@ -54,7 +54,7 @@ local function beginDodgeFacing(dir: Vector3)
 		return
 	end
 	dodgeFaceDir = flat.Unit
-	local hold = (CombatConfig.DodgeDashSec or 0.26) + 0.18
+	local hold = CombatConfig.DodgeFaceHoldSec or ((CombatConfig.DodgeDashSec or 0.42) + 0.12)
 	dodgeFaceUntil = os.clock() + hold
 end
 
@@ -160,7 +160,12 @@ local function updateShiftLockCharacter()
 		flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
 	end
 	if flat.Magnitude > 0.1 then
-		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+		local target = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+		if os.clock() < dodgeFaceUntil and dodgeFaceDir then
+			hrp.CFrame = hrp.CFrame:Lerp(target, 0.26)
+		else
+			hrp.CFrame = target
+		end
 	end
 end
 
@@ -304,6 +309,12 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 		if typeof(fx.reloadSec) == "number" and fx.reloadSec > 0 then
 			reloadUntil = os.clock() + fx.reloadSec
 			CombatAnim.PlayReload(fx.reloadSec)
+		end
+	else
+		local other = Players:GetPlayerByUserId(userId)
+		local char = other and other.Character
+		if char and typeof(fx.anim) == "string" then
+			CombatAnim.PlayOnCharacter(char, fx.anim, fx.family, fx.comboStep, fx)
 		end
 	end
 	CombatVfx.Play(fx)

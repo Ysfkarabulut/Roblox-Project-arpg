@@ -78,10 +78,18 @@ local CombatConfig = {
 	MatchupWeak = 0.85,
 
 	DodgeCost = 18,
-	DodgeIFrameSec = 0.22,
-	DodgeRecoverySec = 0.22,
+	DodgeIFrameSec = 0.24,
+	DodgeRecoverySec = 0.26,
 	DodgeDistance = 11,
-	DodgeDashSec = 0.26,
+	DodgeDashSec = 0.42,
+	-- Client dodge roll feel (GPO-ish: longer blend, no locomotion snap)
+	DodgeAnimTargetSec = 0.58,
+	DodgeAnimFadeIn = 0.22,
+	DodgeAnimFadeOut = 0.34,
+	DodgeAnimWeight = 0.9,
+	DodgeAnimSpeedMin = 0.88,
+	DodgeAnimSpeedMax = 1.55,
+	DodgeFaceHoldSec = 0.48,
 	SprintDrainPerSec = 12,
 	WalkSpeed = 16,
 	SprintWalkSpeed = 24, -- Ctrl sprint (1.5×)

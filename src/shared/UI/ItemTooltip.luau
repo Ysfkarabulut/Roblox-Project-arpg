@@ -8,6 +8,7 @@ local WeaponFamilyConfig = require(script.Parent.Parent.Config.WeaponFamilyConfi
 local WeaponActiveDefs = require(script.Parent.Parent.Config.WeaponActiveDefs)
 local PassiveDefs = require(script.Parent.Parent.Config.PassiveDefs)
 local ArmorAbilityDefs = require(script.Parent.Parent.Config.ArmorAbilityDefs)
+local FocusAbilityDefs = require(script.Parent.Parent.Config.FocusAbilityDefs)
 local UpgradeDefs = require(script.Parent.Parent.Config.UpgradeDefs)
 
 local ItemTooltip = {}
@@ -57,10 +58,18 @@ local function abilityLines(lines: { string }, abilities: { any }?)
 			continue
 		end
 		if typeof(id) == "string" then
-			local def = WeaponActiveDefs.Get(id) or PassiveDefs.Get(id) or ArmorAbilityDefs.Get(id)
+			local def = WeaponActiveDefs.Get(id)
+				or PassiveDefs.Get(id)
+				or ArmorAbilityDefs.Get(id)
+				or FocusAbilityDefs.Get(id)
 			if def then
 				name = name or def.name or id
 				desc = desc or def.desc
+				if def.kind == "Passive" then
+					slotType = "Passive"
+				elseif def.kind == "Active" then
+					slotType = "Active"
+				end
 			end
 		end
 		local cdText = if typeof(cd) == "number" then ` · {cd}s CD` else ""
@@ -182,6 +191,8 @@ function ItemTooltip.Build(ctx: TooltipContext): string
 		section(lines, "Gem")
 		line(lines, def.desc or `Element: {def.element}`)
 		line(lines, "Socket into weapon handle. Replaces existing gem.")
+	elseif kind == "Head" or kind == "Chest" or kind == "Hands" or kind == "Feets" then
+		armorLines(lines, def)
 	elseif kind == "Focus" then
 		section(lines, "Focus")
 		if def.roleHint then

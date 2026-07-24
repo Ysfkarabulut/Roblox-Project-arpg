@@ -4,7 +4,7 @@
 
 local Players = game:GetService("Players")
 
-local QueueConfig = require(game.ReplicatedStorage.Shared.Config.QueueConfig)
+local BossQueueConfig = require(game.ReplicatedStorage.Shared.Config.BossQueueConfig)
 local PartyService = require(script.Parent.PartyService)
 
 local LobbyStateService = {}
@@ -37,22 +37,6 @@ function LobbyStateService.BuildForPlayer(userId: number)
 		end
 	end
 
-	local queues = {}
-	for id, def in QueueConfig.Queues do
-		table.insert(queues, {
-			id = id,
-			mode = def.mode,
-			teamSize = def.teamSize,
-			ranked = def.ranked == true,
-			label = if def.mode == "PvE"
-				then `PvE Boss · {def.teamSize}p`
-				else `PvP {def.teamSize}v{def.teamSize}{if def.ranked then " Ranked" else ""}`,
-		})
-	end
-	table.sort(queues, function(a, b)
-		return a.id < b.id
-	end)
-
 	return {
 		party = if party
 			then {
@@ -63,7 +47,31 @@ function LobbyStateService.BuildForPlayer(userId: number)
 				isLeader = party.leaderUserId == userId,
 			}
 			else nil,
-		queues = queues,
+		pvpSections = {
+			{
+				title = "Casual",
+				queues = {
+					{ label = "1v1", queueId = "pvp_1v1_casual" },
+					{ label = "2v2", queueId = "pvp_2v2_casual" },
+					{ label = "3v3", queueId = "pvp_3v3_casual" },
+				},
+			},
+			{
+				title = "Ranked",
+				queues = {
+					{ label = "1v1", queueId = "pvp_1v1_ranked" },
+					{ label = "2v2", queueId = "pvp_2v2_ranked" },
+					{ label = "3v3", queueId = "pvp_3v3_ranked" },
+				},
+			},
+		},
+		pveWildcard = BossQueueConfig.GetWildcardOption(),
+		pveBosses = BossQueueConfig.GetBossList(),
+		pveQueues = {
+			[1] = "pve_boss_solo",
+			[2] = "pve_boss_duo",
+			[3] = "pve_boss_trio",
+		},
 	}
 end
 

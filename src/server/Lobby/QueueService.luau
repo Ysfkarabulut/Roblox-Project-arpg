@@ -9,8 +9,10 @@
 
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
 
 local QueueConfig = require(game.ReplicatedStorage.Shared.Config.QueueConfig)
+local BossQueueConfig = require(game.ReplicatedStorage.Shared.Config.BossQueueConfig)
 local PartyService = require(script.Parent.PartyService)
 local MatchTeleport = require(script.Parent.MatchTeleport)
 local LoadoutLockService = require(script.Parent.Parent.Combat.LoadoutLockService)
@@ -23,6 +25,7 @@ export type QueueTicket = {
 	partyId: string,
 	memberUserIds: { number },
 	partySize: number,
+	bossPref: BossQueueConfig.BossQueuePref?,
 	enqueuedAt: number,
 }
 
@@ -67,17 +70,60 @@ local function mergeMembers(tickets: { QueueTicket }): { number }
 	return ids
 end
 
+local function flattenTickets(teamTickets: { { QueueTicket } }): { QueueTicket }
+	local out: { QueueTicket } = {}
+	for _, group in teamTickets do
+		for _, ticket in group do
+			table.insert(out, ticket)
+		end
+	end
+	return out
+end
+
 local function startMatch(queueId: string, placeKey: string, teamTickets: { { QueueTicket } })
 	local teams = {}
 	for _, group in teamTickets do
 		table.insert(teams, mergeMembers(group))
+	end
+	local def = QueueConfig.Get(queueId :: any)
+	local resolvedBoss: string? = nil
+	if def and def.mode == "PvE" then
+		local prefs: { BossQueueConfig.BossQueuePref } = {}
+		for _, ticket in flattenTickets(teamTickets) do
+			local norm = BossQueueConfig.Normalize(ticket.bossPref)
+			if norm then
+				table.insert(prefs, norm)
+			end
+		end
+		resolvedBoss = BossQueueConfig.ResolveMatch(prefs)
 	end
 	MatchTeleport.StartMatch({
 		matchId = HttpService:GenerateGUID(false),
 		queueId = queueId,
 		placeKey = placeKey,
 		teams = teams,
+		bossId = resolvedBoss,
 	})
+end
+
+local function findCompatibleTicket(
+	list: { QueueTicket },
+	anchor: QueueTicket,
+	roomLeft: number
+): number?
+	for i, ticket in list do
+		if ticket.partySize <= roomLeft and BossQueueConfig.CanMatch(anchor.bossPref, ticket.bossPref) then
+			return i
+		end
+	end
+	return nil
+end
+
+local function putTicketsBack(list: { QueueTicket }, group: { QueueTicket })
+	for _, ticket in group do
+		table.insert(list, ticket)
+		ticketByPartyId[ticket.partyId] = ticket
+	end
 end
 
 local function oldestWait(tickets: { QueueTicket }): number
@@ -109,10 +155,38 @@ function QueueService.CancelForParty(partyId: string)
 	end
 end
 
-function QueueService.Enqueue(leader: Player, queueId: string): (boolean, string?)
+function QueueService.CancelForUser(userId: number)
+	for _, list in queues do
+		for i = #list, 1, -1 do
+			local t = list[i]
+			for _, uid in t.memberUserIds do
+				if uid == userId then
+					QueueService.CancelForParty(t.partyId)
+					break
+				end
+			end
+		end
+	end
+end
+
+function QueueService.Enqueue(
+	leader: Player,
+	queueId: string,
+	bossPref: BossQueueConfig.BossQueuePref?
+): (boolean, string?)
 	local def = QueueConfig.Get(queueId :: any)
 	if not def then
 		return false, "UnknownQueue"
+	end
+
+	if def.mode == "PvE" then
+		local norm = BossQueueConfig.Normalize(bossPref)
+		if not norm then
+			return false, "InvalidBoss"
+		end
+		bossPref = norm
+	else
+		bossPref = nil
 	end
 
 	local party = PartyService.GetPartyForPlayer(leader.UserId)
@@ -141,6 +215,7 @@ function QueueService.Enqueue(leader: Player, queueId: string): (boolean, string
 		partyId = party.id,
 		memberUserIds = PartyService.GetMemberUserIds(party),
 		partySize = partySize,
+		bossPref = bossPref,
 		enqueuedAt = os.clock(),
 	}
 	table.insert(queues[queueId], ticket)
@@ -251,18 +326,26 @@ function QueueService.TryMatch(queueId: string)
 				i += 1
 			end
 		end
-		if def.teamSize > 1 and oldestWait(list) >= QueueConfig.FillerTimeoutSec then
-			while true do
-				local solos = filterBySize(list, 1)
-				if #solos < def.teamSize then
+		if #list > 0 and oldestWait(list) >= QueueConfig.FillerTimeoutSec then
+			while #list > 0 do
+				local anchor = takeTicket(list, 1)
+				local group: { QueueTicket } = { anchor }
+				local seats = anchor.partySize
+				while seats < def.teamSize do
+					local foundIdx = findCompatibleTicket(list, anchor, def.teamSize - seats)
+					if not foundIdx then
+						break
+					end
+					local nextTicket = takeTicket(list, foundIdx)
+					table.insert(group, nextTicket)
+					seats += nextTicket.partySize
+				end
+				if seats == def.teamSize then
+					startMatch(queueId, def.placeKey, { group })
+				else
+					putTicketsBack(list, group)
 					break
 				end
-				local group: { QueueTicket } = {}
-				for _ = 1, def.teamSize do
-					table.insert(group, takeTicket(list, solos[1]))
-					solos = filterBySize(list, 1)
-				end
-				startMatch(queueId, def.placeKey, { group })
 			end
 		end
 		return
@@ -297,6 +380,10 @@ RunService.Heartbeat:Connect(function(dt)
 	for queueId in queues do
 		QueueService.TryMatch(queueId)
 	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	QueueService.CancelForUser(player.UserId)
 end)
 
 return QueueService

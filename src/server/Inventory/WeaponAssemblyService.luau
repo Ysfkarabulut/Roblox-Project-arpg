@@ -138,7 +138,7 @@ function WeaponAssemblyService.SocketGem(userId: number, frameUuid: string, gemU
 		return false, "NotOwned"
 	end
 	local gemDef = ItemDefs.Get(gemInst.defId)
-	if not gemDef or gemDef.kind ~= "ElementGem" then
+	if not gemDef or gemDef.kind ~= "ElementGem" or gemDef.element == "Neutral" then
 		return false, "NotGem"
 	end
 	if gemInst.installedIn and gemInst.installedIn ~= frameUuid then
@@ -203,103 +203,106 @@ function WeaponAssemblyService.CreateFrame(userId: number)
 end
 
 --- Build a new weapon from free bag parts (handle + blade + pommel, optional gem).
+--- Gem issues never abort forge — weapon completes as Neutral (no socketed gem).
+--- Returns frameUuid, hard error, optional gemSkipped reason.
 function WeaponAssemblyService.ForgeFromParts(
 	userId: number,
 	handleUuid: string,
 	bladeUuid: string,
 	pommelUuid: string,
 	gemUuid: string?
-): (string?, string?)
+): (string?, string?, string?)
 	if typeof(handleUuid) ~= "string" or typeof(bladeUuid) ~= "string" or typeof(pommelUuid) ~= "string" then
-		return nil, "BadParts"
+		return nil, "BadParts", nil
 	end
 	if handleUuid == bladeUuid or handleUuid == pommelUuid or bladeUuid == pommelUuid then
-		return nil, "DuplicateParts"
+		return nil, "DuplicateParts", nil
 	end
 	if gemUuid and (gemUuid == handleUuid or gemUuid == bladeUuid or gemUuid == pommelUuid) then
-		return nil, "DuplicateParts"
+		return nil, "DuplicateParts", nil
 	end
 
 	local handleInst = InventoryService.FindRaw(userId, handleUuid)
 	local bladeInst = InventoryService.FindRaw(userId, bladeUuid)
 	local pommelInst = InventoryService.FindRaw(userId, pommelUuid)
 	if not handleInst or not bladeInst or not pommelInst then
-		return nil, "NotOwned"
+		return nil, "NotOwned", nil
 	end
 	if handleInst.installedIn or bladeInst.installedIn or pommelInst.installedIn then
-		return nil, "AlreadyInstalled"
+		return nil, "AlreadyInstalled", nil
 	end
 
 	local handleDef = ItemDefs.Get(handleInst.defId)
 	local bladeDef = ItemDefs.Get(bladeInst.defId)
 	local pommelDef = ItemDefs.Get(pommelInst.defId)
 	if not handleDef or handleDef.kind ~= "WeaponHandle" then
-		return nil, "NeedHandle"
+		return nil, "NeedHandle", nil
 	end
 	if not bladeDef or bladeDef.kind ~= "WeaponBlade" then
-		return nil, "NeedBlade"
+		return nil, "NeedBlade", nil
 	end
 	if not pommelDef or pommelDef.kind ~= "WeaponPommel" then
-		return nil, "NeedPommel"
+		return nil, "NeedPommel", nil
 	end
 
 	local handleType = handleDef.handleType
 	local okBlade, errBlade = WeaponAssemblyService.ValidatePart(handleType, bladeDef, "blade")
 	if not okBlade then
-		return nil, errBlade
+		return nil, errBlade, nil
 	end
 	local okPommel, errPommel = WeaponAssemblyService.ValidatePart(handleType, pommelDef, "pommel")
 	if not okPommel then
-		return nil, errPommel
+		return nil, errPommel, nil
 	end
 
 	local gemInst = nil
+	local gemSkipped: string? = nil
 	if typeof(gemUuid) == "string" and gemUuid ~= "" then
 		gemInst = InventoryService.FindRaw(userId, gemUuid)
 		if not gemInst then
-			return nil, "GemNotOwned"
-		end
-		if gemInst.installedIn then
-			return nil, "GemAlreadyInstalled"
-		end
-		local gemDef = ItemDefs.Get(gemInst.defId)
-		if not gemDef or gemDef.kind ~= "ElementGem" then
-			return nil, "NeedGem"
+			gemSkipped = "GemNotOwned"
+		elseif gemInst.installedIn then
+			gemSkipped = "GemAlreadyInstalled"
+		else
+			local gemDef = ItemDefs.Get(gemInst.defId)
+			if not gemDef or gemDef.kind ~= "ElementGem" or gemDef.element == "Neutral" then
+				gemSkipped = "InvalidGem"
+			end
 		end
 	end
 
 	local frame = WeaponAssemblyService.CreateFrame(userId)
 	if not frame then
-		return nil, "FrameFailed"
+		return nil, "FrameFailed", nil
 	end
 
 	local okH, errH = WeaponAssemblyService.InstallPart(userId, frame.uuid, handleUuid, "handle")
 	if not okH then
 		InventoryService.RemoveItem(userId, frame.uuid)
-		return nil, errH or "InstallHandleFailed"
+		return nil, errH or "InstallHandleFailed", nil
 	end
 	local okB, errB = WeaponAssemblyService.InstallPart(userId, frame.uuid, bladeUuid, "blade")
 	if not okB then
 		WeaponAssemblyService.RemovePart(userId, frame.uuid, "handle")
 		InventoryService.RemoveItem(userId, frame.uuid)
-		return nil, errB or "InstallBladeFailed"
+		return nil, errB or "InstallBladeFailed", nil
 	end
 	local okP, errP = WeaponAssemblyService.InstallPart(userId, frame.uuid, pommelUuid, "pommel")
 	if not okP then
 		WeaponAssemblyService.RemovePart(userId, frame.uuid, "blade")
 		WeaponAssemblyService.RemovePart(userId, frame.uuid, "handle")
 		InventoryService.RemoveItem(userId, frame.uuid)
-		return nil, errP or "InstallPommelFailed"
+		return nil, errP or "InstallPommelFailed", nil
 	end
 
-	if gemInst then
+	if gemInst and not gemSkipped then
 		local okG, errG = WeaponAssemblyService.SocketGem(userId, frame.uuid, gemUuid :: string)
 		if not okG then
-			warn("[Forge] Gem socket failed", errG)
+			gemSkipped = errG or "GemSocketFailed"
 		end
 	end
 
-	return frame.uuid, nil
+	return frame.uuid, nil, gemSkipped
 end
 
 return WeaponAssemblyService

@@ -11,6 +11,8 @@ local C = UiTheme.Colors
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+local Players = game:GetService("Players")
+
 local remotes = ReplicatedStorage:WaitForChild("BossRemotes")
 local BossState = remotes:WaitForChild("BossState") :: RemoteEvent
 local BossTelegraph = remotes:WaitForChild("BossTelegraph") :: RemoteEvent
@@ -115,6 +117,13 @@ local function applyState(payload: any)
 		return
 	end
 	gui.Enabled = true
+	if typeof(payload.displayName) == "string" then
+		title.Text = payload.displayName
+	elseif payload.bossId == "breaker" then
+		title.Text = "The Breaker"
+	elseif payload.bossId == "eye" then
+		title.Text = "The Eye"
+	end
 	if typeof(payload.phase) == "number" then
 		phaseLabel.Text = `P{payload.phase}`
 	end
@@ -137,5 +146,24 @@ BossTelegraph.OnClientEvent:Connect(function(payload)
 		showToast("MONOLITH GAZE — hide behind stone!", payload.duration or 4)
 	elseif payload.kind == "Tentacle" then
 		showToast("Tentacle — focus fire!", 2)
+	elseif payload.kind == "IrisPulse" or payload.kind == "AggroStrike" then
+		local targetId = payload.targetUserId
+		if typeof(targetId) == "number" and targetId == player.UserId then
+			showToast("BOSS FOCUS — block or dodge!", payload.duration or 1.35)
+		elseif typeof(targetId) == "number" then
+			local target = Players:GetPlayerByUserId(targetId)
+			local name = if target then target.DisplayName else "ally"
+			showToast(`Boss targets {name}`, payload.duration or 1.35)
+		end
+	elseif payload.kind == "RustMark" then
+		if typeof(payload.targetUserId) == "number" and payload.targetUserId == player.UserId then
+			showToast("RUST MARK — move!", payload.duration or 1.2)
+		end
+	elseif payload.kind == "ShoulderCharge" then
+		if typeof(payload.targetUserId) == "number" and payload.targetUserId == player.UserId then
+			showToast("CHARGE incoming — sidestep!", payload.duration or 1.5)
+		end
+	elseif payload.kind == "CataclysmSlam" then
+		showToast("CATACLYSM — leave the circle!", payload.duration or 2.75)
 	end
 end)

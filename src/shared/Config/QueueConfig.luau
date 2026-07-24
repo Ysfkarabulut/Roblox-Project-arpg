@@ -46,7 +46,7 @@ end
 -- Solo 2v2/3v3 queue'a girebilir; parti boyutu 1..teamSize.
 function QueueConfig.CanEnqueuePartySize(def: QueueDef, partySize: number): boolean
 	if def.mode == "PvE" then
-		return partySize == def.teamSize
+		return partySize >= 1 and partySize <= def.teamSize
 	end
 	-- PvP: 1v1 yalnızca solo; 2v2/3v3 = 1..teamSize
 	if def.teamSize == 1 then

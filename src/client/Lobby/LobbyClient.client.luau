@@ -58,8 +58,8 @@ function Lobby.LeaveParty()
 	PartyLeave:FireServer()
 end
 
-function Lobby.Queue(queueId: string)
-	QueueStart:FireServer(queueId)
+function Lobby.Queue(queueId: string, bossPref: string?)
+	QueueStart:FireServer(queueId, bossPref)
 end
 
 function Lobby.CancelQueue()

@@ -9,6 +9,7 @@ local RotatingBeamService = require(script.Parent.mechanics.RotatingBeamService)
 local MonolithService = require(script.Parent.mechanics.MonolithService)
 local GazeService = require(script.Parent.mechanics.GazeService)
 local TentacleService = require(script.Parent.mechanics.TentacleService)
+local IrisPulseService = require(script.Parent.mechanics.IrisPulseService)
 
 local EyeBossController = {}
 
@@ -54,11 +55,13 @@ function EyeBossController.Start(
 		end,
 	})
 	local tentacle = TentacleService.Start(partyUserIds, getPhase)
+	local iris = IrisPulseService.Start(partyUserIds, getPhase)
 
 	local function broadcastState()
 		local hp, maxHp = BossEntityService.GetHp()
 		BossSync.FireState({
 			bossId = bossId,
+			displayName = def.displayName,
 			phase = phase,
 			hp = hp,
 			maxHp = maxHp,
@@ -97,6 +100,7 @@ function EyeBossController.Start(
 			monolith.Stop()
 			gaze.Stop()
 			tentacle.Stop()
+			iris.Stop()
 			BossSync.FireState({ active = false })
 		end,
 	}

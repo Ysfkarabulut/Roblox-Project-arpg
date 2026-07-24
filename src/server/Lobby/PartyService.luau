@@ -67,6 +67,18 @@ local function expirePendingInvites()
 	end
 end
 
+local function clearPartyAttributes(player: Player)
+	player:SetAttribute("PartyId", nil)
+	player:SetAttribute("PartyIsLeader", nil)
+	player:SetAttribute("PartyGrouped", nil)
+	local char = player.Character
+	if char then
+		char:SetAttribute("PartyId", nil)
+		char:SetAttribute("PartyIsLeader", nil)
+		char:SetAttribute("PartyGrouped", nil)
+	end
+end
+
 function PartyService.FindPlayerByName(name: string): Player?
 	local query = normalizeName(name)
 	if query == "" then
@@ -318,14 +330,7 @@ function PartyService.Leave(player: Player)
 
 	if #party.members == 0 then
 		partiesById[party.id] = nil
-		player:SetAttribute("PartyId", nil)
-		player:SetAttribute("PartyIsLeader", nil)
-		player:SetAttribute("PartyGrouped", nil)
-		if player.Character then
-			player.Character:SetAttribute("PartyId", nil)
-			player.Character:SetAttribute("PartyIsLeader", nil)
-			player.Character:SetAttribute("PartyGrouped", nil)
-		end
+		clearPartyAttributes(player)
 		return
 	end
 
@@ -334,6 +339,7 @@ function PartyService.Leave(player: Player)
 		party.members[1].ready = true
 	end
 	PartyService.SyncAttributesForParty(party)
+	clearPartyAttributes(player)
 end
 
 function PartyService.AllReady(party: Party): boolean

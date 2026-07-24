@@ -16,6 +16,7 @@ export type MatchPayload = {
 	queueId: string,
 	placeKey: string,
 	teams: { { number } },
+	bossId: string?,
 }
 
 local MatchTeleport = {}
@@ -47,6 +48,7 @@ function MatchTeleport.StartMatch(payload: MatchPayload)
 		matchId = payload.matchId,
 		queueId = payload.queueId,
 		teams = payload.teams,
+		bossId = payload.bossId,
 	}
 
 	if not PlaceConfig.IsConfigured(placeKey) then
@@ -63,8 +65,9 @@ function MatchTeleport.StartMatch(payload: MatchPayload)
 			for _, p in players do
 				table.insert(userIds, p.UserId)
 			end
+			local bossId = if typeof(payload.bossId) == "string" then payload.bossId else "eye"
 			BossEncounterService.Start({
-				bossId = "eye",
+				bossId = bossId,
 				partyUserIds = userIds,
 				partySize = math.clamp(#userIds, 1, 3),
 			})

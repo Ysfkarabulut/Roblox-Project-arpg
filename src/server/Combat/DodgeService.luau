@@ -133,12 +133,14 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 	clearLegacyMovers(hrp)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 
-	-- Face dash direction (upright) so roll KF reads forward
-	local pos = hrp.Position
-	hrp.CFrame = CFrame.lookAt(pos, pos + dir)
-
-	local dashSec = CombatConfig.DodgeDashSec or 0.32
+	local dashSec = CombatConfig.DodgeDashSec or 0.42
 	local speed = CombatConfig.DodgeDistance / dashSec
+
+	local function dashSpeedMul(alpha: number): number
+		local t = math.clamp(alpha, 0, 1)
+		-- Sine bell — soft start/end (less snappy than instant max velocity).
+		return math.max(0.04, math.sin(t * math.pi))
+	end
 
 	dashTokens[userId] = (dashTokens[userId] or 0) + 1
 	local token = dashTokens[userId]
@@ -157,13 +159,12 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 			if conn then
 				conn:Disconnect()
 			end
-			-- Keep vertical vel; bleed horizontal
+			-- Soft horizontal bleed at end of dash
 			local v = hrp.AssemblyLinearVelocity
-			hrp.AssemblyLinearVelocity = Vector3.new(v.X * 0.25, v.Y, v.Z * 0.25)
+			hrp.AssemblyLinearVelocity = Vector3.new(v.X * 0.35, v.Y, v.Z * 0.35)
 			return
 		end
-		-- Ease-out curve: fast start, soft finish
-		local mul = (1 - a) * (1 - a * 0.35)
+		local mul = dashSpeedMul(a)
 		local v = hrp.AssemblyLinearVelocity
 		hrp.AssemblyLinearVelocity = Vector3.new(dir.X * speed * mul, v.Y, dir.Z * speed * mul)
 	end)

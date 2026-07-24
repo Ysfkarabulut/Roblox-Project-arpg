@@ -167,19 +167,22 @@ GrantMvpLoadout.OnServerEvent:Connect(function(player: Player)
 	local ids = {
 		"h_1h_sword",
 		"b_sword_st",
-		"p_pommel_balanced",
-		"g_fire",
+		"p_balanced",
+		"gem_steel",
 		"a_head_steel",
 		"a_chest_steel",
 		"a_hands_steel",
 		"a_feets_steel",
+		"a_chest_bastion",
+		"o_focus_fishnet",
+		"o_focus_vampire",
 		"o_shield_t1",
 	}
 	for _, defId in ids do
 		InventoryService.AddItem(player.UserId, defId)
 	end
 	pushInventory(player)
-	notify(player, true, "MVP test loadout granted (steel + sword parts)")
+	notify(player, true, "MVP test loadout granted (steel + sword + focus + role armor)")
 end)
 
 SetStats.OnServerEvent:Connect(function(player: Player, patch: any)

@@ -10,11 +10,14 @@ local BossEncounterConfig = require(game.ReplicatedStorage.Shared.Config.BossEnc
 local BossArenaBuilder = require(script.Parent.BossArenaBuilder)
 local BossEntityService = require(script.Parent.BossEntityService)
 local BossCombatTargets = require(script.Parent.BossCombatTargets)
+local BossAggroService = require(script.Parent.BossAggroService)
 local BossHazardService = require(script.Parent.BossHazardService)
 local BossSync = require(script.Parent.BossSync)
 local EyeBossController = require(script.Parent.EyeBossController)
+local BreakerBossController = require(script.Parent.BreakerBossController)
 local MatchResultBridge = require(script.Parent.Parent.Loot.MatchResultBridge)
 local MatchResetService = require(script.Parent.Parent.Combat.MatchResetService)
+local CareerService = require(script.Parent.Parent.Meta.CareerService)
 
 local BossEncounterService = {}
 
@@ -28,8 +31,10 @@ local active = false
 local arena: BossArenaBuilder.ArenaHandle? = nil
 local controller: any = nil
 local partyUserIds: { number } = {}
+local partySize = 1
 local bossId: string? = nil
 local ending = false
+local combatStartAt: number? = nil
 local wipeConn: RBXScriptConnection? = nil
 local deathConns: { RBXScriptConnection } = {}
 
@@ -110,6 +115,12 @@ local function finishEncounter(won: boolean)
 	clearDeathConns()
 
 	local id = bossId or "eye"
+	if won and combatStartAt then
+		local clearMs = math.max(1, math.floor((os.clock() - combatStartAt) * 1000))
+		for _, userId in partyUserIds do
+			CareerService.RecordBossClear(userId, id, clearMs, partySize, partyUserIds)
+		end
+	end
 	for _, plr in getPlayers() do
 		MatchResetService.ResetPlayer(plr)
 		if won or BossHazardService.IsAlive(plr) then
@@ -131,11 +142,14 @@ local function finishEncounter(won: boolean)
 	BossArenaBuilder.Destroy(arena)
 	arena = nil
 	BossCombatTargets.SetActive(false)
+	BossAggroService.Stop()
 	restoreTrainingDummy()
 	teleportPlayersToLobby()
 
 	active = false
 	bossId = nil
+	partySize = 1
+	combatStartAt = nil
 	table.clear(partyUserIds)
 	ending = false
 
@@ -195,6 +209,7 @@ function BossEncounterService.Start(payload: StartPayload): boolean
 	ending = false
 	bossId = payload.bossId
 	partyUserIds = table.clone(payload.partyUserIds)
+	partySize = math.clamp(payload.partySize, 1, 3)
 
 	hideTrainingDummy()
 
@@ -203,12 +218,16 @@ function BossEncounterService.Start(payload: StartPayload): boolean
 	teleportPlayersToArena(arena.spawnPoints)
 
 	local hp = BossEncounterConfig.ScaledHp(payload.bossId, payload.partySize)
-	BossEntityService.Spawn(payload.bossId, arenaCfg.center + Vector3.new(0, 8, 0), hp)
+	local spawnPos = if payload.bossId == "breaker"
+		then arenaCfg.center
+		else arenaCfg.center + Vector3.new(0, 8, 0)
+	BossEntityService.Spawn(payload.bossId, spawnPos, hp)
 	BossEntityService.SetOnDeath(function()
 		finishEncounter(true)
 	end)
 
 	BossCombatTargets.SetActive(true)
+	BossAggroService.Start(partyUserIds, payload.bossId)
 
 	for _, plr in getPlayers() do
 		wirePlayerDeath(plr)
@@ -226,12 +245,23 @@ function BossEncounterService.Start(payload: StartPayload): boolean
 		return false
 	end
 
-	controller = EyeBossController.Start(
-		payload.bossId,
-		partyUserIds,
-		arenaCfg.center,
-		arenaCfg.radius
-	)
+	combatStartAt = os.clock()
+
+	if payload.bossId == "breaker" then
+		controller = BreakerBossController.Start(
+			payload.bossId,
+			partyUserIds,
+			arenaCfg.center,
+			arenaCfg.radius
+		)
+	else
+		controller = EyeBossController.Start(
+			payload.bossId,
+			partyUserIds,
+			arenaCfg.center,
+			arenaCfg.radius
+		)
+	end
 
 	wipeConn = RunService.Heartbeat:Connect(function()
 		checkWipe()
