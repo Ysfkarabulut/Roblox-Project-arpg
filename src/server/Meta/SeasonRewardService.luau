@@ -77,7 +77,9 @@ function SeasonRewardService.ClaimSeason(userId: number, seasonId: string): { ok
 	end
 
 	CareerService.MarkSeasonClaimed(userId, seasonId)
-	PlayerProfileService.Save(userId)
+	if PlayerProfileService.IsLoaded(userId) then
+		PlayerProfileService.Save(userId)
+	end
 
 	return { ok = true, rewards = granted, reason = nil }
 end
@@ -85,10 +87,13 @@ end
 function SeasonRewardService.ClaimAllPending(userId: number): { ok: boolean, seasons: { string }, rewards: { GrantedReward } }
 	local allRewards: { GrantedReward } = {}
 	local claimedSeasons: { string } = {}
-	for _, season in SeasonConfig.GetEndedSeasons() do
+	local ended = SeasonConfig.GetEndedSeasons()
+	local pending = 0
+	for _, season in ended do
 		if CareerService.IsSeasonClaimed(userId, season.id) then
 			continue
 		end
+		pending += 1
 		local result = SeasonRewardService.ClaimSeason(userId, season.id)
 		if result.ok then
 			table.insert(claimedSeasons, season.id)
@@ -97,8 +102,9 @@ function SeasonRewardService.ClaimAllPending(userId: number): { ok: boolean, sea
 			end
 		end
 	end
+	-- ok = true when nothing pending OR at least one claim succeeded
 	return {
-		ok = #claimedSeasons > 0 or #SeasonConfig.GetEndedSeasons() == 0,
+		ok = pending == 0 or #claimedSeasons > 0,
 		seasons = claimedSeasons,
 		rewards = allRewards,
 	}
@@ -106,6 +112,9 @@ end
 
 function SeasonRewardService.TryAutoClaimOnJoin(userId: number)
 	task.defer(function()
+		if not PlayerProfileService.IsLoaded(userId) then
+			return
+		end
 		SeasonRewardService.ClaimAllPending(userId)
 	end)
 end

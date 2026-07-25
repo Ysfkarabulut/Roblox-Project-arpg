@@ -79,17 +79,17 @@ local CombatConfig = {
 
 	DodgeCost = 18,
 	DodgeIFrameSec = 0.24,
-	DodgeRecoverySec = 0.26,
-	DodgeDistance = 11,
-	DodgeDashSec = 0.42,
-	-- Client dodge roll feel (GPO-ish: longer blend, no locomotion snap)
+	DodgeRecoverySec = 0.22,
+	DodgeDistance = 17,
+	DodgeDashSec = 0.50,
+	-- Longer roll — less clip compression, matches dash travel
 	DodgeAnimTargetSec = 0.58,
-	DodgeAnimFadeIn = 0.22,
-	DodgeAnimFadeOut = 0.34,
-	DodgeAnimWeight = 0.9,
-	DodgeAnimSpeedMin = 0.88,
-	DodgeAnimSpeedMax = 1.55,
-	DodgeFaceHoldSec = 0.48,
+	DodgeAnimFadeIn = 0.06,
+	DodgeAnimFadeOut = 0.14,
+	DodgeAnimWeight = 1,
+	DodgeAnimSpeedMin = 1.5,
+	DodgeAnimSpeedMax = 3.0,
+	DodgeFaceHoldSec = 0.52,
 	SprintDrainPerSec = 12,
 	WalkSpeed = 16,
 	SprintWalkSpeed = 24, -- Ctrl sprint (1.5×)

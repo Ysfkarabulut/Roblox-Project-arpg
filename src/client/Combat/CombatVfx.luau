@@ -9,6 +9,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local VfxConfig = require(game.ReplicatedStorage.Shared.Config.VfxConfig)
+local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local VfxAssets = require(script.Parent.VfxAssets)
 local UiTheme = require(script.Parent.Parent.UI.UiTheme)
 
@@ -225,6 +226,14 @@ local function resolveShape(fx: any, vfx: string): string?
 	return nil
 end
 
+local function shiftLockCameraOffset(): Vector3
+	local plr = Players.LocalPlayer
+	if plr:GetAttribute("ShiftLock") == true then
+		return CombatConfig.ShiftLockCameraOffset or Vector3.new(1.75, 0, 0)
+	end
+	return Vector3.zero
+end
+
 local function cameraKick(intensity: number)
 	if intensity <= 0 then
 		return
@@ -234,6 +243,7 @@ local function cameraKick(intensity: number)
 	if not hum then
 		return
 	end
+	local base = shiftLockCameraOffset()
 	local seed = math.random() * 1000
 	local start = os.clock()
 	local dur = 0.13
@@ -242,14 +252,14 @@ local function cameraKick(intensity: number)
 	conn = RunService.RenderStepped:Connect(function()
 		local t = os.clock() - start
 		if t >= dur then
-			hum.CameraOffset = Vector3.zero
+			hum.CameraOffset = base
 			if conn then
 				conn:Disconnect()
 			end
 			return
 		end
 		local falloff = 1 - (t / dur)
-		hum.CameraOffset = Vector3.new(
+		hum.CameraOffset = base + Vector3.new(
 			math.noise(seed, t * 90) * mag * falloff,
 			math.noise(seed + 1, t * 90) * mag * falloff * 0.5,
 			0

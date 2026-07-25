@@ -656,7 +656,7 @@ end
 
 local function fetchMergedPve(kind: string, partyRankLimit: number): { LeaderboardPveMerge.MergedEntry }
 	local boards = LeaderboardPveMerge.FilterBoards(catalogBoards, kind)
-	local fetchLimit = SeasonConfig.LeaderboardUiMax
+	local fetchLimit = math.max(partyRankLimit, ROWS_PER_BOARD)
 	local byBoard: { [string]: { any } } = {}
 	for _, board in boards do
 		byBoard[board.id] = fetchBoard(board.id, fetchLimit)

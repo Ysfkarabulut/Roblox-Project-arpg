@@ -5,7 +5,8 @@
 local Players = game:GetService("Players")
 
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
-local DodgeService = require(script.Parent.Parent.Combat.DodgeService)local GuardService = require(script.Parent.Parent.Combat.GuardService)
+local DodgeService = require(script.Parent.Parent.Combat.DodgeService)
+local GuardService = require(script.Parent.Parent.Combat.GuardService)
 local ParryService = require(script.Parent.Parent.Combat.ParryService)
 local StatService = require(script.Parent.Parent.Combat.StatService)
 local StatusService = require(script.Parent.Parent.Combat.StatusService)

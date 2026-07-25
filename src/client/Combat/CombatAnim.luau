@@ -31,30 +31,44 @@ local dodgeKfHandle: KeyframeClipPlayer.Handle? = nil
 --- offsets on live R15 (limbs explode). Strip translation once per session.
 local dodgeSanitizedId: string? = nil
 local dodgeSanitizeSource: string? = nil
+local dodgePlayingUntil = 0
 
 local function dodgeTargetSec(): number
 	return CombatConfig.DodgeAnimTargetSec or 0.58
 end
 
 local function dodgeFadeIn(): number
-	return CombatConfig.DodgeAnimFadeIn or 0.22
+	return CombatConfig.DodgeAnimFadeIn or 0.06
 end
 
 local function dodgeFadeOut(): number
-	return CombatConfig.DodgeAnimFadeOut or 0.34
+	return CombatConfig.DodgeAnimFadeOut or 0.14
 end
 
 local function dodgePlayWeight(): number
-	return CombatConfig.DodgeAnimWeight or 0.9
+	return CombatConfig.DodgeAnimWeight or 1
 end
 
 local function dodgeSpeedClamp(len: number): number
 	local target = dodgeTargetSec()
-	local minSpd = CombatConfig.DodgeAnimSpeedMin or 0.88
-	local maxSpd = CombatConfig.DodgeAnimSpeedMax or 1.55
+	local minSpd = CombatConfig.DodgeAnimSpeedMin or 1.5
+	local maxSpd = CombatConfig.DodgeAnimSpeedMax or 3.0
 	return math.clamp(len / target, minSpd, maxSpd)
 end
 
+local function stopLocomotionTracks(char: Model, fade: number?)
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	local animator = hum and hum:FindFirstChildOfClass("Animator")
+	if not animator then
+		return
+	end
+	local f = fade or 0.06
+	for _, track in animator:GetPlayingAnimationTracks() do
+		if track.Priority.Value <= Enum.AnimationPriority.Action.Value then
+			track:Stop(f)
+		end
+	end
+end
 
 local MOTOR_NAMES = {
 	rs = "RightShoulder",
@@ -507,12 +521,6 @@ local function proceduralDodge(char: Model, moveDir: Vector3?, duration: number)
 		end
 	end
 
-	local originalCam = hum.CameraOffset
-	local camDuck = originalCam + Vector3.new(localX * -0.35, -0.85, localZ * 0.15)
-	TweenService:Create(hum, TweenInfo.new(outDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		CameraOffset = camDuck,
-	}):Play()
-
 	task.delay(outDur + holdDur, function()
 		if dodgeLeanToken ~= token then
 			return
@@ -524,12 +532,78 @@ local function proceduralDodge(char: Model, moveDir: Vector3?, duration: number)
 				end)
 			end
 		end
-		if hum.Parent then
-			TweenService:Create(hum, TweenInfo.new(backDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				CameraOffset = originalCam,
-			}):Play()
-		end
 	end)
+end
+
+local function playDodgeOnCharacter(char: Model, look: Vector3?)
+	stopLocomotionTracks(char, 0.04)
+	ensureTracks(char)
+
+	local track = tracks.Dodge
+	if dodgeKfHandle then
+		dodgeKfHandle.stop()
+		dodgeKfHandle = nil
+	end
+
+	local dodgeKf = findDodgeKeyframe()
+	if dodgeKf then
+		local len = KeyframeClipPlayer.GetDuration(dodgeKf)
+		if len ~= len or len <= 0 then
+			len = 0.9
+		end
+		local speed = dodgeSpeedClamp(len)
+		dodgeKfHandle = KeyframeClipPlayer.Play(char, dodgeKf, { looped = false, speed = speed })
+		dodgePlayingUntil = os.clock() + dodgeTargetSec() + 0.08
+		return
+	end
+
+	if track then
+		track.Looped = false
+		track.Priority = Enum.AnimationPriority.Action4
+		local len = track.Length
+		if len ~= len or len <= 0 then
+			len = 0.9
+		end
+		local speed = dodgeSpeedClamp(len)
+		local fadeIn = dodgeFadeIn()
+		local fadeOut = dodgeFadeOut()
+		local targetSec = dodgeTargetSec()
+		track:Play(fadeIn, dodgePlayWeight(), speed)
+		scheduleAutoStop("Dodge", track, targetSec + 0.1, fadeOut)
+		dodgePlayingUntil = os.clock() + targetSec + 0.08
+		return
+	end
+
+	proceduralDodge(char, look, dodgeTargetSec())
+	dodgePlayingUntil = os.clock() + dodgeTargetSec() + 0.08
+end
+
+function CombatAnim.IsDodgePlaying(): boolean
+	return os.clock() < dodgePlayingUntil
+end
+
+function CombatAnim.PlayDodge(look: Vector3?)
+	if os.clock() < dodgePlayingUntil then
+		return
+	end
+	local player = Players.LocalPlayer
+	local char = player.Character
+	if not char then
+		return
+	end
+	playDodgeOnCharacter(char, look)
+end
+
+function CombatAnim.CancelDodge(fade: number?)
+	dodgePlayingUntil = 0
+	if dodgeKfHandle then
+		dodgeKfHandle.stop()
+		dodgeKfHandle = nil
+	end
+	local track = tracks.Dodge
+	if track and track.IsPlaying then
+		track:Stop(fade or 0.08)
+	end
 end
 
 function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts: any?)
@@ -570,38 +644,8 @@ function CombatAnim.Play(kind: string, family: string?, comboStep: number?, opts
 
 	local track = tracks[base] or (if base == "Dodge" then nil else tracks.Melee)
 	if base == "Dodge" then
-		stopActionTracks(0.18)
-		if dodgeKfHandle then
-			dodgeKfHandle.stop()
-			dodgeKfHandle = nil
-		end
-		local dodgeKf = findDodgeKeyframe()
-		if dodgeKf then
-			local len = KeyframeClipPlayer.GetDuration(dodgeKf)
-			if len ~= len or len <= 0 then
-				len = 0.9
-			end
-			local speed = dodgeSpeedClamp(len)
-			dodgeKfHandle = KeyframeClipPlayer.Play(char, dodgeKf, { looped = false, speed = speed })
-			return
-		end
-		if track then
-			track.Looped = false
-			track.Priority = Enum.AnimationPriority.Action3
-			local len = track.Length
-			if len ~= len or len <= 0 then
-				len = 0.9
-			end
-			local speed = dodgeSpeedClamp(len)
-			local fadeIn = dodgeFadeIn()
-			local fadeOut = dodgeFadeOut()
-			local targetSec = dodgeTargetSec()
-			-- Blend over locomotion — do not hard-stop walk/run (was causing snap).
-			track:Play(fadeIn, dodgePlayWeight(), speed)
-			scheduleAutoStop("Dodge", track, targetSec + 0.12, fadeOut)
-			return
-		end
-		proceduralDodge(char, look, dodgeTargetSec())
+		stopActionTracks(0.12)
+		playDodgeOnCharacter(char, look)
 		return
 	end
 
@@ -757,6 +801,7 @@ Players.LocalPlayer.CharacterAdded:Connect(function()
 		dodgeKfHandle.stop()
 		dodgeKfHandle = nil
 	end
+	dodgePlayingUntil = 0
 	table.clear(tracks)
 	table.clear(laTracks)
 	table.clear(stopTokens)

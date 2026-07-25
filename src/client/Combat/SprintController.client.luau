@@ -197,6 +197,11 @@ local function moveSpeedMult(char: Model): number
 	return mult
 end
 
+local function isDodgeRolling(char: Model): boolean
+	local untilAt = char:GetAttribute("DodgeRolling")
+	return typeof(untilAt) == "number" and os.clock() < untilAt
+end
+
 local function applyWalkSpeed(hum: Humanoid, char: Model, sprinting: boolean)
 	local mult = moveSpeedMult(char)
 	local speed = if sprinting then CombatConfig.SprintWalkSpeed else baseWalkSpeed
@@ -234,12 +239,24 @@ RunService.RenderStepped:Connect(function(dt)
 	loadSprintTracks(char)
 
 	local hum = char:FindFirstChildOfClass("Humanoid")
+	local rolling = isDodgeRolling(char)
 	local stance = currentStance()
 	local cfg = AnimConfig.Sprint[stance] or AnimConfig.Sprint.OneHandFocus
-	local sprinting = isSprinting()
+	local sprinting = not rolling and isSprinting()
 
 	if hum then
-		applyWalkSpeed(hum, char, sprinting)
+		if rolling then
+			hum.WalkSpeed = 0
+		else
+			applyWalkSpeed(hum, char, sprinting)
+		end
+	end
+
+	if rolling then
+		stopSprint()
+		applyLean(char, 0, false)
+		dustAcc = 0
+		return
 	end
 
 	if sprinting then

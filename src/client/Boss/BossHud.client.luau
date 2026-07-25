@@ -11,8 +11,6 @@ local C = UiTheme.Colors
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local Players = game:GetService("Players")
-
 local remotes = ReplicatedStorage:WaitForChild("BossRemotes")
 local BossState = remotes:WaitForChild("BossState") :: RemoteEvent
 local BossTelegraph = remotes:WaitForChild("BossTelegraph") :: RemoteEvent

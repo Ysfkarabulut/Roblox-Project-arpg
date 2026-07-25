@@ -16,6 +16,28 @@ local DodgeService = {}
 local recoveryUntil: { [number]: number } = {}
 local dashTokens: { [number]: number } = {}
 
+local function dashSpeedMul(alpha: number): number
+	local t = math.clamp(alpha, 0, 1)
+	-- Soft ramp-in, sustained mid-roll, gentle stop
+	if t < 0.14 then
+		return 0.55 + (t / 0.14) * 0.45
+	end
+	if t < 0.72 then
+		return 1
+	end
+	local u = (t - 0.72) / 0.28
+	return math.max(0.1, 1 - u * u)
+end
+
+local function averageDashMul(samples: number): number
+	local n = math.max(8, samples)
+	local sum = 0
+	for i = 0, n - 1 do
+		sum += dashSpeedMul(i / (n - 1))
+	end
+	return sum / n
+end
+
 local function dodgeCost(userId: number): number
 	if PassiveService.HasPassive(userId, "quiet_step_armorpassive") then
 		return CombatConfig.DodgeCost * 0.92
@@ -108,6 +130,26 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 		silentBatch = true,
 	})
 
+	local dashSec = CombatConfig.DodgeDashSec or 0.50
+	StatusService.Apply(char, "DodgeMove", dashSec, {
+		sourceUserId = userId,
+		params = { slowPct = 100 },
+		silentBatch = true,
+	})
+	char:SetAttribute("DodgeRolling", os.clock() + dashSec + 0.06)
+	task.delay(dashSec + 0.08, function()
+		if char.Parent then
+			char:SetAttribute("DodgeRolling", nil)
+		end
+	end)
+
+	local okNameplate, NameplateService = pcall(function()
+		return require(script.Parent.NameplateService)
+	end)
+	if okNameplate then
+		NameplateService.Sync(char)
+	end
+
 	applyDodgeStep(userId, hrp.Position)
 
 	if PassiveService.HasPassive(userId, "ward_step_armorpassive") then
@@ -133,14 +175,8 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 	clearLegacyMovers(hrp)
 	hrp.AssemblyAngularVelocity = Vector3.zero
 
-	local dashSec = CombatConfig.DodgeDashSec or 0.42
-	local speed = CombatConfig.DodgeDistance / dashSec
-
-	local function dashSpeedMul(alpha: number): number
-		local t = math.clamp(alpha, 0, 1)
-		-- Sine bell — soft start/end (less snappy than instant max velocity).
-		return math.max(0.04, math.sin(t * math.pi))
-	end
+	local dashAvg = averageDashMul(24)
+	local speed = CombatConfig.DodgeDistance / (dashSec * dashAvg)
 
 	dashTokens[userId] = (dashTokens[userId] or 0) + 1
 	local token = dashTokens[userId]
@@ -159,9 +195,8 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 			if conn then
 				conn:Disconnect()
 			end
-			-- Soft horizontal bleed at end of dash
 			local v = hrp.AssemblyLinearVelocity
-			hrp.AssemblyLinearVelocity = Vector3.new(v.X * 0.35, v.Y, v.Z * 0.35)
+			hrp.AssemblyLinearVelocity = Vector3.new(v.X * 0.2, v.Y, v.Z * 0.2)
 			return
 		end
 		local mul = dashSpeedMul(a)

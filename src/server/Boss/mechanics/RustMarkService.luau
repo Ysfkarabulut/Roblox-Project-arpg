@@ -96,7 +96,7 @@ function RustMarkService.Start(partyUserIds: { number }, rustCfg: RustCfg): Rust
 			})
 
 			task.wait(telegraphSec)
-			if not running or not BossAggroService.IsAlive(target) then
+			if not running or not BossHazardService.IsAlive(target) then
 				continue
 			end
 

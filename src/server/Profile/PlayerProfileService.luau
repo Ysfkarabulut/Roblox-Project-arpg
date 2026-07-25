@@ -407,7 +407,14 @@ function PlayerProfileService.Load(userId: number): boolean
 	return true
 end
 
+function PlayerProfileService.IsLoaded(userId: number): boolean
+	return loaded[userId] == true
+end
+
 function PlayerProfileService.Save(userId: number): boolean
+	if not loaded[userId] then
+		return false
+	end
 	local profile = PlayerProfileService.Export(userId)
 	local ok, err = pcall(function()
 		store:SetAsync(keyFor(userId), profile)

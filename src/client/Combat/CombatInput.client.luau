@@ -54,8 +54,14 @@ local function beginDodgeFacing(dir: Vector3)
 		return
 	end
 	dodgeFaceDir = flat.Unit
-	local hold = CombatConfig.DodgeFaceHoldSec or ((CombatConfig.DodgeDashSec or 0.42) + 0.12)
+	local hold = CombatConfig.DodgeFaceHoldSec or ((CombatConfig.DodgeDashSec or 0.50) + 0.08)
 	dodgeFaceUntil = os.clock() + hold
+	-- Face once at dodge start — per-frame HRP snaps fight replication and shake the camera.
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if hrp then
+		hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + dodgeFaceDir)
+	end
 end
 
 -- Stamina HUD
@@ -119,6 +125,7 @@ end
 
 local function applyShiftLockState()
 	local hum = getHumanoid()
+	player:SetAttribute("ShiftLock", shiftLock)
 	if shiftLock then
 		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
 		UserInputService.MouseIconEnabled = false
@@ -141,9 +148,12 @@ local function applyShiftLockState()
 end
 
 --- Face camera yaw only — never override camera CFrame (that caused pitch slide).
---- While dodging, face dash direction so the forward roll matches movement.
+--- During dodge, rotation is set once in beginDodgeFacing (no per-frame snap).
 local function updateShiftLockCharacter()
 	if not shiftLock or isTyping() then
+		return
+	end
+	if os.clock() < dodgeFaceUntil then
 		return
 	end
 	camera = Workspace.CurrentCamera
@@ -153,19 +163,10 @@ local function updateShiftLockCharacter()
 		return
 	end
 	UserInputService.MouseBehavior = Enum.MouseBehavior.LockCenter
-	local flat: Vector3
-	if os.clock() < dodgeFaceUntil and dodgeFaceDir then
-		flat = dodgeFaceDir
-	else
-		flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
-	end
+	local flat = Vector3.new(camera.CFrame.LookVector.X, 0, camera.CFrame.LookVector.Z)
 	if flat.Magnitude > 0.1 then
 		local target = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
-		if os.clock() < dodgeFaceUntil and dodgeFaceDir then
-			hrp.CFrame = hrp.CFrame:Lerp(target, 0.26)
-		else
-			hrp.CFrame = target
-		end
+		hrp.CFrame = target
 	end
 end
 
@@ -213,6 +214,19 @@ local function doLightAttack()
 	LightAttack:FireServer(look, aim)
 end
 
+local function setDodgeRolling(active: boolean)
+	local char = player.Character
+	if not char then
+		return
+	end
+	if active then
+		local dashSec = CombatConfig.DodgeDashSec or 0.50
+		char:SetAttribute("DodgeRolling", os.clock() + dashSec + 0.08)
+	else
+		char:SetAttribute("DodgeRolling", nil)
+	end
+end
+
 local function doDodge()
 	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local dir = if hum then hum.MoveDirection else Vector3.zero
@@ -220,6 +234,8 @@ local function doDodge()
 		dir = camera.CFrame.LookVector
 	end
 	beginDodgeFacing(dir)
+	setDodgeRolling(true)
+	CombatAnim.PlayDodge(dir)
 	DodgeRemote:FireServer(dir)
 end
 
@@ -294,8 +310,12 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 		local animKey = fx.anim or "Melee"
 		if animKey == "Dodge" and typeof(fx.look) == "Vector3" then
 			beginDodgeFacing(fx.look)
+			if not CombatAnim.IsDodgePlaying() then
+				CombatAnim.Play("Dodge", fx.family, fx.comboStep, fx)
+			end
+		else
+			CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
 		end
-		CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
 		if typeof(fx.recoverySec) == "number" and fx.recoverySec > 0 and player.Character then
 			local char = player.Character
 			local comboMult = if typeof(fx.comboMoveMult) == "number" then fx.comboMoveMult else 1
@@ -318,7 +338,9 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 		end
 	end
 	CombatVfx.Play(fx)
-	CombatHitStop.TryOnFx(userId, fx, _hits)
+	if fx.anim ~= "Dodge" then
+		CombatHitStop.TryOnFx(userId, fx, _hits)
+	end
 end)
 
 ReactionFx.OnClientEvent:Connect(function(reactionId: string, pos: Vector3)
@@ -332,6 +354,8 @@ CombatNotify.OnClientEvent:Connect(function(result: any)
 	if result.action == "Dodge" and result.ok == false then
 		dodgeFaceUntil = 0
 		dodgeFaceDir = nil
+		setDodgeRolling(false)
+		CombatAnim.CancelDodge(0.06)
 	end
 	if result.action == "Guard" or result.action == "Parry" or result.action == "Defend" then
 		defending = rmbHeld and result.ok == true and (result.guarding == true or result.parrying == true)

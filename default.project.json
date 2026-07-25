@@ -44,6 +44,11 @@
           "$path": "src/client"
         }
       }
+    },
+    "HttpService": {
+      "$properties": {
+        "HttpEnabled": true
+      }
     }
   }
 }
