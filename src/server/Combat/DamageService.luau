@@ -131,7 +131,7 @@ function DamageService.ApplyHp(entity: Instance, kind: string, amount: number, v
 	end
 	local dealt, dead = 0, false
 	if kind == "Dummy" then
-		dealt, dead = DummyService.ApplyDamage(amount)
+		dealt, dead = DummyService.ApplyDamageTo(entity, amount)
 		NameplateService.Sync(entity)
 		return dealt, dead
 	end
@@ -193,6 +193,7 @@ export type DirectAttackCtx = {
 	skipCrit: boolean?,
 	kind: string?, -- "LA" | "Ability" | "Burst" | "DoT"
 	applyOnHitStatus: { id: string, duration: number, dps: number?, params: { [string]: any }? }?,
+	statusApplyOpts: { helmOverride: boolean?, gemElement: string? }?,
 	pressureGroupId: string?,
 }
 
@@ -311,7 +312,12 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 			PassiveService.TryThornReflect(vUid, ctx.attacker, dealt)
 		end
 		if ctx.applyOnHitStatus and dealt > 0 then
-			local scaled = PassiveService.FinalizeLaOnHitStatus(ctx.attacker.UserId, ctx.applyOnHitStatus, ctx.atkElement)
+			local scaled = PassiveService.FinalizeLaOnHitStatus(
+				ctx.attacker.UserId,
+				ctx.applyOnHitStatus,
+				ctx.atkElement,
+				ctx.statusApplyOpts
+			)
 			local applied = CombatPressureService.TryApplyStatus(entity, scaled.id, scaled.duration, {
 				sourceUserId = ctx.attacker.UserId,
 				dps = scaled.dps,

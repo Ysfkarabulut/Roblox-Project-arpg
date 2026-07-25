@@ -104,9 +104,7 @@ function WeaponResolver.ResolveFrame(userId: number, frameInst: any, inventoryFi
 		element = gemDef.element
 	end
 
-	local bladeName = bladeDef.name or "Blade"
-	local handleName = handleDef.name or "Handle"
-	local displayName = `{bladeName} ({handleName:gsub(" Handle", "")})`
+	local displayName = bladeDef.name or "Blade"
 
 	local abilities = {}
 	if bladeDef.abilities then

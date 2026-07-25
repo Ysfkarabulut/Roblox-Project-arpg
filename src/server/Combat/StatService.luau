@@ -255,6 +255,8 @@ function StatService.Derived(userId: number): {
 	synergyElement: string?,
 	synergyElements: { string }?,
 	synergyPerk: string,
+	synergyDefenceBonusPct: number,
+	synergyResistBonusPct: number,
 }
 	local s = StatService.Ensure(userId)
 	local gear = StatService.GearStats(userId)
@@ -286,6 +288,8 @@ function StatService.Derived(userId: number): {
 		synergyElement = synergy.pureElement,
 		synergyElements = synergy.dualityElements,
 		synergyPerk = synergyPerkLine(synergy),
+		synergyDefenceBonusPct = synergy.defenceBonusPct,
+		synergyResistBonusPct = synergy.resistBonusPct,
 	}
 end
 

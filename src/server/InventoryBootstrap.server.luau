@@ -83,6 +83,8 @@ local function buildResolvedSummary(userId: number)
 		scaling = resolved.scaling,
 		attackSpeedMult = resolved.attackSpeedMult,
 		complete = resolved.complete,
+		bladeDefId = resolved.bladeDefId,
+		gemDefId = resolved.gemDefId,
 	}
 end
 

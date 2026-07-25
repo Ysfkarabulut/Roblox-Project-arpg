@@ -130,6 +130,21 @@ function WeaponMeshConfig.GetFolder(): Folder?
 	return nil
 end
 
+function WeaponMeshConfig.GetTemplateByMeshKey(meshKey: string?): Model?
+	if not meshKey or meshKey == "" then
+		return nil
+	end
+	local folder = WeaponMeshConfig.GetFolder()
+	if not folder then
+		return nil
+	end
+	local template = folder:FindFirstChild(meshKey)
+	if template and template:IsA("Model") then
+		return template
+	end
+	return nil
+end
+
 function WeaponMeshConfig.GetTemplate(animPrefix: string?, defId: string?): Model?
 	local name = WeaponMeshConfig.ResolveName(animPrefix, defId)
 	if not name then

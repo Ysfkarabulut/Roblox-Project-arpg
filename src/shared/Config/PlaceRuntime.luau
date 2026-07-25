@@ -73,6 +73,11 @@ function PlaceRuntime.IsLobby(): boolean
 	return PlaceRuntime.GetRole() == "Lobby"
 end
 
+function PlaceRuntime.IsPveBoss(): boolean
+	local role = PlaceRuntime.GetRole()
+	return role == "PveBoss" or role == "PveBossEye"
+end
+
 function PlaceRuntime.IsPvpArena(): boolean
 	local role = PlaceRuntime.GetRole()
 	return role == "Pvp1v1" or role == "Pvp2v2" or role == "Pvp3v3"

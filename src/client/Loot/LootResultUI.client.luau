@@ -303,6 +303,9 @@ local function show(payload: any)
 		elseif typeof(payload.bossKillCount) == "number" and payload.bossKillCount > 1 then
 			modeLine ..= ` · Kill #{payload.bossKillCount}`
 		end
+		if typeof(payload.clearTimeText) == "string" and payload.clearTimeText ~= "" then
+			modeLine ..= ` · Clear {payload.clearTimeText}`
+		end
 	end
 	subtitle.Text = modeLine
 

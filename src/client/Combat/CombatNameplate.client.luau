@@ -1,6 +1,6 @@
 --[[
 	Combat nameplates — Boss / PvP / Training / Players (MMORPG overhead UI).
-	Status: icon + remaining sec + label · HP bar with themed chrome.
+	Status: symbol icon + duration strip · HP bar with themed chrome.
 ]]
 
 local HttpService = game:GetService("HttpService")
@@ -8,6 +8,8 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local NameplateConfig = require(game.ReplicatedStorage.Shared.Config.NameplateConfig)
+local ReactionTable = require(game.ReplicatedStorage.Shared.Config.ReactionTable)
+local StatusIconArt = require(script.Parent.StatusIconArt)
 local UiTheme = require(script.Parent.Parent.UI.UiTheme)
 
 local C = UiTheme.Colors
@@ -132,45 +134,44 @@ end
 
 local function buildStatusSlot(parent: Frame): Frame
 	local slot = Instance.new("Frame")
-	slot.Size = UDim2.fromOffset(36, 40)
+	slot.Size = UDim2.fromOffset(28, 32)
 	slot.BackgroundTransparency = 1
 	slot.Parent = parent
 
-	local timeLbl = makeText(slot, {
-		Name = "Time",
-		Size = UDim2.new(1, 0, 0, 12),
-		Position = UDim2.fromOffset(0, 0),
-		TextSize = UiTheme.TextSize.Caption - 1,
-		TextColor3 = N.TextOnBar,
-		Text = "",
-	})
-
 	local icon = Instance.new("Frame")
 	icon.Name = "Icon"
-	icon.Size = UDim2.fromOffset(22, 22)
-	icon.Position = UDim2.new(0.5, -11, 0, 12)
+	icon.Size = UDim2.fromOffset(26, 26)
+	icon.Position = UDim2.new(0.5, -13, 0, 0)
 	icon.BorderSizePixel = 0
 	icon.Parent = slot
-	UiTheme.Corner(icon, UiTheme.Radius.Xs)
+	UiTheme.Corner(icon, UiTheme.Radius.Sm)
 	UiTheme.Stroke(icon, { color = C.StrokeSoft, thickness = 1.5 })
 
-	local abbrev = makeText(icon, {
+	local artHost = Instance.new("Frame")
+	artHost.Name = "ArtHost"
+	artHost.Size = UDim2.new(1, 0, 1, -11)
+	artHost.Position = UDim2.fromOffset(0, 0)
+	artHost.BackgroundTransparency = 1
+	artHost.ClipsDescendants = true
+	artHost.Parent = icon
+
+	local timeStrip = Instance.new("Frame")
+	timeStrip.Name = "TimeStrip"
+	timeStrip.Size = UDim2.new(1, 0, 0, 11)
+	timeStrip.Position = UDim2.new(0, 0, 1, -11)
+	timeStrip.BackgroundColor3 = Color3.fromRGB(12, 14, 18)
+	timeStrip.BackgroundTransparency = 0.35
+	timeStrip.BorderSizePixel = 0
+	timeStrip.Parent = icon
+	UiTheme.Corner(timeStrip, UiTheme.Radius.Xs)
+
+	local timeLbl = makeText(timeStrip, {
+		Name = "Time",
 		Size = UDim2.fromScale(1, 1),
 		TextSize = 9,
 		TextColor3 = N.TextOnBar,
-		Text = "?",
-		Font = UiTheme.Font.Display,
-	})
-
-	local nameLbl = makeText(slot, {
-		Name = "StatusName",
-		Size = UDim2.new(1, 4, 0, 10),
-		Position = UDim2.new(0, -2, 1, -11),
-		TextSize = 8,
-		TextColor3 = N.TextMuted,
 		Text = "",
-		Font = UiTheme.Font.Body,
-		TextTruncate = Enum.TextTruncate.AtEnd,
+		Font = UiTheme.Font.Title,
 	})
 
 	return slot
@@ -383,29 +384,38 @@ local function updatePlate(model: Model, parts: PlateParts)
 		local entry = statuses[i]
 		if entry then
 			slot.Visible = true
-			local timeLbl = slot:FindFirstChild("Time") :: TextLabel?
+			local statusId = if typeof(entry.id) == "string" then entry.id else "?"
+			local vis = NameplateConfig.StatusVisual(statusId)
 			local icon = slot:FindFirstChild("Icon") :: Frame?
-			local nameLbl = slot:FindFirstChild("StatusName") :: TextLabel?
-			if timeLbl then
-				if typeof(entry.remaining) == "number" then
-					timeLbl.Text = tostring(math.ceil(entry.remaining))
-				else
-					timeLbl.Text = "∞"
-				end
-			end
 			if icon then
 				icon.BackgroundColor3 = Color3.fromRGB(entry.r or 180, entry.g or 180, entry.b or 190)
 				local stroke = icon:FindFirstChildOfClass("UIStroke")
 				if stroke then
 					stroke.Color = if entry.debuff then N.DebuffBorder else N.BuffBorder
+					stroke.Thickness = if entry.debuff then 1.8 else 1.4
 				end
-				local ab = icon:FindFirstChildWhichIsA("TextLabel")
-				if ab then
-					ab.Text = tostring(entry.abbrev or string.sub(entry.id or "?", 1, 2))
+				local artHost = icon:FindFirstChild("ArtHost") :: Frame?
+				if artHost then
+					local mergeA, mergeB = ReactionTable.OutputParents(statusId)
+					if mergeA and mergeB then
+						local visA = NameplateConfig.StatusVisual(mergeA)
+						local visB = NameplateConfig.StatusVisual(mergeB)
+						icon.BackgroundColor3 = visA.color:Lerp(visB.color, 0.5):Lerp(Color3.fromRGB(20, 22, 28), 0.55)
+					else
+						icon.BackgroundColor3 = vis.color:Lerp(Color3.fromRGB(18, 20, 26), 0.45)
+					end
+					StatusIconArt.MountForStatus(artHost, statusId)
 				end
-			end
-			if nameLbl and nameLbl:IsA("TextLabel") then
-				nameLbl.Text = tostring(entry.label or entry.id or "")
+				local timeStrip = icon:FindFirstChild("TimeStrip")
+				local timeLbl = timeStrip and timeStrip:FindFirstChild("Time") :: TextLabel?
+				if timeLbl then
+					if typeof(entry.remaining) == "number" then
+						local sec = math.ceil(entry.remaining)
+						timeLbl.Text = if sec >= 10 then tostring(sec) else string.format("%.1f", entry.remaining)
+					else
+						timeLbl.Text = "∞"
+					end
+				end
 			end
 		else
 			slot.Visible = false

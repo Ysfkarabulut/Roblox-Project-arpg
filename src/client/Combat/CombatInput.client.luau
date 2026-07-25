@@ -335,6 +335,11 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 		local char = other and other.Character
 		if char and typeof(fx.anim) == "string" then
 			CombatAnim.PlayOnCharacter(char, fx.anim, fx.family, fx.comboStep, fx)
+		elseif typeof(fx.dummyName) == "string" then
+			local dummy = workspace:FindFirstChild(fx.dummyName)
+			if dummy and dummy:IsA("Model") then
+				CombatAnim.PlayOnCharacter(dummy, fx.anim, fx.family, fx.comboStep, fx)
+			end
 		end
 	end
 	CombatVfx.Play(fx)

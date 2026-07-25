@@ -34,6 +34,9 @@ local SetStats = remotes:WaitForChild("SetStats") :: RemoteEvent
 local ResetStats = remotes:WaitForChild("ResetStats") :: RemoteEvent
 local ResetDummy = remotes:WaitForChild("ResetDummy") :: RemoteEvent
 local SetDummyMaxHp = remotes:WaitForChild("SetDummyMaxHp") :: RemoteEvent
+local SpawnDummies = remotes:WaitForChild("SpawnDummies") :: RemoteEvent
+local SpawnLaDummy = remotes:WaitForChild("SpawnLaDummy") :: RemoteEvent
+local ClearSpawnedDummies = remotes:WaitForChild("ClearSpawnedDummies") :: RemoteEvent
 local DevNotify = remotes:WaitForChild("DevNotify") :: RemoteEvent
 local SimulateMatchResult = remotes:WaitForChild("SimulateMatchResult") :: RemoteEvent
 local GetDevState = remotes:WaitForChild("GetDevState") :: RemoteFunction
@@ -65,8 +68,8 @@ gui.Parent = playerGui
 local panel = UiTheme.Panel({
 	parent = gui,
 	name = "Panel",
-	size = UDim2.fromOffset(460, 592),
-	position = UDim2.new(0.5, -230, 0.5, -296),
+	size = UDim2.fromOffset(460, 628),
+	position = UDim2.new(0.5, -230, 0.5, -314),
 	visible = false,
 })
 UiTheme.Stroke(panel, { color = C.Dev, thickness = 1.5 })
@@ -206,7 +209,7 @@ end)
 
 -- Dummy row
 local dummyFrame = Instance.new("Frame")
-dummyFrame.Size = UDim2.new(1, -16, 0, 40)
+dummyFrame.Size = UDim2.new(1, -16, 0, 76)
 dummyFrame.Position = UDim2.fromOffset(8, 184)
 dummyFrame.BackgroundColor3 = Color3.fromRGB(28, 30, 36)
 dummyFrame.BorderSizePixel = 0
@@ -259,9 +262,51 @@ local shc = Instance.new("UICorner")
 shc.CornerRadius = UDim.new(0, 4)
 shc.Parent = setHpBtn
 
+local spawn3Btn = Instance.new("TextButton")
+spawn3Btn.Size = UDim2.fromOffset(88, 28)
+spawn3Btn.Position = UDim2.fromOffset(8, 40)
+spawn3Btn.BackgroundColor3 = Color3.fromRGB(60, 100, 70)
+spawn3Btn.BorderSizePixel = 0
+spawn3Btn.Font = Enum.Font.GothamBold
+spawn3Btn.TextSize = 11
+spawn3Btn.TextColor3 = Color3.fromRGB(230, 245, 235)
+spawn3Btn.Text = "Spawn +3"
+spawn3Btn.Parent = dummyFrame
+local s3c = Instance.new("UICorner")
+s3c.CornerRadius = UDim.new(0, 4)
+s3c.Parent = spawn3Btn
+
+local spawnLaBtn = Instance.new("TextButton")
+spawnLaBtn.Size = UDim2.fromOffset(88, 28)
+spawnLaBtn.Position = UDim2.fromOffset(104, 40)
+spawnLaBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 120)
+spawnLaBtn.BorderSizePixel = 0
+spawnLaBtn.Font = Enum.Font.GothamBold
+spawnLaBtn.TextSize = 11
+spawnLaBtn.TextColor3 = Color3.fromRGB(240, 220, 255)
+spawnLaBtn.Text = "LA Dummy"
+spawnLaBtn.Parent = dummyFrame
+local slc = Instance.new("UICorner")
+slc.CornerRadius = UDim.new(0, 4)
+slc.Parent = spawnLaBtn
+
+local clearSpawnBtn = Instance.new("TextButton")
+clearSpawnBtn.Size = UDim2.fromOffset(88, 28)
+clearSpawnBtn.Position = UDim2.fromOffset(200, 40)
+clearSpawnBtn.BackgroundColor3 = Color3.fromRGB(70, 70, 78)
+clearSpawnBtn.BorderSizePixel = 0
+clearSpawnBtn.Font = Enum.Font.GothamBold
+clearSpawnBtn.TextSize = 11
+clearSpawnBtn.TextColor3 = Color3.fromRGB(220, 220, 228)
+clearSpawnBtn.Text = "Clear extras"
+clearSpawnBtn.Parent = dummyFrame
+local csc = Instance.new("UICorner")
+csc.CornerRadius = UDim.new(0, 4)
+csc.Parent = clearSpawnBtn
+
 local autoHotbarBtn = Instance.new("TextButton")
 autoHotbarBtn.Size = UDim2.fromOffset(90, 28)
-autoHotbarBtn.Position = UDim2.fromOffset(314, 6)
+autoHotbarBtn.Position = UDim2.fromOffset(296, 40)
 autoHotbarBtn.BackgroundColor3 = Color3.fromRGB(50, 90, 110)
 autoHotbarBtn.BorderSizePixel = 0
 autoHotbarBtn.Font = Enum.Font.GothamBold
@@ -282,6 +327,15 @@ setHpBtn.MouseButton1Click:Connect(function()
 		SetDummyMaxHp:FireServer(n)
 	end
 end)
+spawn3Btn.MouseButton1Click:Connect(function()
+	SpawnDummies:FireServer(3)
+end)
+spawnLaBtn.MouseButton1Click:Connect(function()
+	SpawnLaDummy:FireServer()
+end)
+clearSpawnBtn.MouseButton1Click:Connect(function()
+	ClearSpawnedDummies:FireServer()
+end)
 
 local AutoFillHotbar = remotes:WaitForChild("AutoFillHotbar") :: RemoteEvent
 autoHotbarBtn.MouseButton1Click:Connect(function()
@@ -291,7 +345,7 @@ end)
 -- Match loot sim (Faz 3)
 local matchFrame = Instance.new("Frame")
 matchFrame.Size = UDim2.new(1, -16, 0, 76)
-matchFrame.Position = UDim2.fromOffset(8, 232)
+matchFrame.Position = UDim2.fromOffset(8, 268)
 matchFrame.BackgroundColor3 = Color3.fromRGB(28, 30, 36)
 matchFrame.BorderSizePixel = 0
 matchFrame.Parent = panel
@@ -358,7 +412,7 @@ end)
 -- Item spawn
 local search = Instance.new("TextBox")
 search.Size = UDim2.new(1, -80, 0, 30)
-search.Position = UDim2.fromOffset(8, 316)
+search.Position = UDim2.fromOffset(8, 352)
 search.BackgroundColor3 = Color3.fromRGB(40, 44, 52)
 search.BorderSizePixel = 0
 search.Font = Enum.Font.Gotham
@@ -389,8 +443,8 @@ cbc.CornerRadius = UDim.new(0, 4)
 cbc.Parent = countBox
 
 local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -16, 1, -362)
-scroll.Position = UDim2.fromOffset(8, 354)
+scroll.Size = UDim2.new(1, -16, 1, -398)
+scroll.Position = UDim2.fromOffset(8, 390)
 scroll.BackgroundTransparency = 1
 scroll.BorderSizePixel = 0
 scroll.ScrollBarThickness = 4

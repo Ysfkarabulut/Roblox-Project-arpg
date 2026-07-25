@@ -18,6 +18,8 @@ local BreakerBossController = require(script.Parent.BreakerBossController)
 local MatchResultBridge = require(script.Parent.Parent.Loot.MatchResultBridge)
 local MatchResetService = require(script.Parent.Parent.Combat.MatchResetService)
 local CareerService = require(script.Parent.Parent.Meta.CareerService)
+local CareerConfig = require(game.ReplicatedStorage.Shared.Config.CareerConfig)
+local LoadoutLockService = require(script.Parent.Parent.Combat.LoadoutLockService)
 
 local BossEncounterService = {}
 
@@ -50,17 +52,18 @@ local function getPlayers(): { Player }
 end
 
 local function hideTrainingDummy()
-	local dummy = workspace:FindFirstChild("TrainingDummy")
-	if dummy then
-		dummy.Parent = ServerStorage
+	for _, inst in workspace:GetChildren() do
+		if inst:IsA("Model") and inst:GetAttribute("IsCombatDummy") then
+			inst.Parent = ServerStorage
+		end
 	end
 end
 
 local function restoreTrainingDummy()
-	local dummy = ServerStorage:FindFirstChild("TrainingDummy")
-	if dummy and dummy:IsA("Model") then
-		dummy.Parent = workspace
-		return
+	for _, inst in ServerStorage:GetChildren() do
+		if inst:IsA("Model") and inst:GetAttribute("IsCombatDummy") then
+			inst.Parent = workspace
+		end
 	end
 	local DummyService = require(script.Parent.Parent.Combat.DummyService)
 	DummyService.Ensure()
@@ -115,8 +118,11 @@ local function finishEncounter(won: boolean)
 	clearDeathConns()
 
 	local id = bossId or "eye"
+	local clearMs: number? = nil
+	local clearTimeText: string? = nil
 	if won and combatStartAt then
-		local clearMs = math.max(1, math.floor((os.clock() - combatStartAt) * 1000))
+		clearMs = math.max(1, math.floor((os.clock() - combatStartAt) * 1000))
+		clearTimeText = CareerConfig.FormatClearTime(clearMs)
 		for _, userId in partyUserIds do
 			CareerService.RecordBossClear(userId, id, clearMs, partySize, partyUserIds)
 		end
@@ -128,6 +134,8 @@ local function finishEncounter(won: boolean)
 				mode = "PvE",
 				won = won,
 				bossId = id,
+				clearMs = clearMs,
+				clearTimeText = clearTimeText,
 			})
 		else
 			MatchResultBridge.FinishMatch(plr, {
@@ -137,6 +145,8 @@ local function finishEncounter(won: boolean)
 			})
 		end
 	end
+
+	LoadoutLockService.UnlockMany(partyUserIds)
 
 	BossEntityService.Destroy()
 	BossArenaBuilder.Destroy(arena)
@@ -210,6 +220,10 @@ function BossEncounterService.Start(payload: StartPayload): boolean
 	bossId = payload.bossId
 	partyUserIds = table.clone(payload.partyUserIds)
 	partySize = math.clamp(payload.partySize, 1, 3)
+
+	for _, userId in partyUserIds do
+		LoadoutLockService.Lock(userId)
+	end
 
 	hideTrainingDummy()
 

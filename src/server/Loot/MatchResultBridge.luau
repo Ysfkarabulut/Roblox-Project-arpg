@@ -48,6 +48,8 @@ export type LootResultPayload = {
 	bossDrop: LootEntryClient?,
 	firstBossClear: boolean?,
 	bossKillCount: number?,
+	clearMs: number?,
+	clearTimeText: string?,
 }
 
 local lootResultRemote: RemoteEvent? = nil
@@ -149,6 +151,8 @@ local function fireLootResult(
 		bossDrop = formatGrant(out.bossGranted),
 		firstBossClear = out.firstBossClear == true,
 		bossKillCount = out.bossKillCount,
+		clearMs = result.clearMs,
+		clearTimeText = result.clearTimeText,
 	}
 	lootResultRemote:FireClient(player, payload)
 end

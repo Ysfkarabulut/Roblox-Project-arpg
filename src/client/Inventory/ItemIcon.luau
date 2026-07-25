@@ -1,5 +1,6 @@
 --[[
 	Item icons via ViewportFrame — 3/4 shot of WeaponMeshes templates.
+	Weapon frames use blade mesh + optional element gem badge.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,6 +9,7 @@ local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
 local WeaponMeshConfig = require(ReplicatedStorage.Shared.Config.WeaponMeshConfig)
 local WeaponFamilyConfig = require(ReplicatedStorage.Shared.Config.WeaponFamilyConfig)
 local AnimConfig = require(ReplicatedStorage.Shared.Config.AnimConfig)
+local GemSymbol = require(ReplicatedStorage.Shared.UI.GemSymbol)
 
 local ItemIcon = {}
 
@@ -24,6 +26,23 @@ local PART_COLORS = {
 	LootBox = Color3.fromRGB(210, 175, 90),
 }
 
+local function bladeTemplateForDef(def: any): Model?
+	if not def then
+		return nil
+	end
+	if typeof(def.meshKey) == "string" and def.meshKey ~= "" then
+		local byKey = WeaponMeshConfig.GetTemplateByMeshKey(def.meshKey)
+		if byKey then
+			return byKey
+		end
+	end
+	if def.kind == "WeaponBlade" and def.family then
+		local family = WeaponFamilyConfig.Resolve(def)
+		return WeaponMeshConfig.GetTemplate(family.animPrefix, def.id)
+	end
+	return nil
+end
+
 function ItemIcon.ResolveTemplate(defId: string?): Model?
 	if not defId then
 		return nil
@@ -35,7 +54,10 @@ function ItemIcon.ResolveTemplate(defId: string?): Model?
 	if not def then
 		return nil
 	end
-	if PART_COLORS[def.kind] then
+	if def.kind == "WeaponBlade" then
+		return bladeTemplateForDef(def)
+	end
+	if PART_COLORS[def.kind] and def.kind ~= "WeaponBlade" then
 		return nil
 	end
 	if isShieldKind(def.kind) then
@@ -76,13 +98,21 @@ local function framingCFrame(model: Model): (CFrame, number)
 	return CFrame.new(), 3
 end
 
---- Clear previous icon children (ViewportFrame / fallback)
+local function clearGemBadge(parent: GuiObject)
+	local badge = parent:FindFirstChild("GemBadge")
+	if badge then
+		badge:Destroy()
+	end
+end
+
+--- Clear previous icon children (ViewportFrame / fallback / gem badge)
 function ItemIcon.Clear(parent: GuiObject)
 	for _, c in parent:GetChildren() do
-		if c.Name == "ItemIconVp" or c.Name == "ItemIconFallback" then
+		if c.Name == "ItemIconVp" or c.Name == "ItemIconFallback" or c.Name == "GemBadge" then
 			c:Destroy()
 		end
 	end
+	clearGemBadge(parent)
 end
 
 export type MountOpts = {
@@ -91,43 +121,26 @@ export type MountOpts = {
 	yawDeg: number?,
 	pitchDeg: number?,
 	distanceMul: number?,
+	element: string?,
+	showGemBadge: boolean?,
 }
 
---- Mount 3/4 preview into parent. Returns ViewportFrame or nil.
-function ItemIcon.Mount(parent: GuiObject, defId: string?, opts: MountOpts?): ViewportFrame?
-	ItemIcon.Clear(parent)
-	if not defId then
-		return nil
-	end
-	opts = opts or {}
-	local template = ItemIcon.ResolveTemplate(defId)
-	if not template then
-		-- Armor / missing mesh: tinted fallback tile
-		local def = ItemDefs.Get(defId)
-		local fb = Instance.new("Frame")
-		fb.Name = "ItemIconFallback"
-		fb.Size = UDim2.fromScale(1, 1)
-		local partColor = def and PART_COLORS[def.kind]
-		if def and def.kind == "LootBox" then
-			if def.rarity == "Rare" then
-				fb.BackgroundColor3 = Color3.fromRGB(120, 150, 230)
-			elseif def.rarity == "BossExclusive" then
-				fb.BackgroundColor3 = Color3.fromRGB(170, 100, 220)
-			else
-				fb.BackgroundColor3 = PART_COLORS.LootBox
-			end
-		else
-			fb.BackgroundColor3 = partColor
-				or AnimConfig.ElementColor[(def and def.element) or "Neutral"]
-				or Color3.fromRGB(120, 120, 130)
-		end
-		fb.BackgroundTransparency = 0.55
-		fb.BorderSizePixel = 0
-		fb.ZIndex = opts.zIndex or 1
-		fb.Parent = parent
-		return nil
-	end
+export type FrameMountOpts = MountOpts & {
+	bladeDefId: string?,
+}
 
+local function mountGemBadge(parent: GuiObject, element: string?, zIndex: number?)
+	if not element or element == "Neutral" then
+		return
+	end
+	GemSymbol.Mount({
+		parent = parent,
+		element = element,
+		zIndex = (zIndex or 1) + 4,
+	})
+end
+
+local function mountViewport(parent: GuiObject, template: Model, opts: MountOpts): ViewportFrame
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "ItemIconVp"
 	vp.Size = UDim2.fromScale(1, 1)
@@ -158,6 +171,75 @@ function ItemIcon.Mount(parent: GuiObject, defId: string?, opts: MountOpts?): Vi
 	cam.CFrame = CFrame.new((pivot * offset).Position, pivot.Position)
 	cam.FieldOfView = 30
 
+	return vp
+end
+
+local function mountFallback(parent: GuiObject, defId: string?, opts: MountOpts)
+	local def = defId and ItemDefs.Get(defId)
+	local fb = Instance.new("Frame")
+	fb.Name = "ItemIconFallback"
+	fb.Size = UDim2.fromScale(1, 1)
+	local partColor = def and PART_COLORS[def.kind]
+	if def and def.kind == "LootBox" then
+		if def.rarity == "Rare" then
+			fb.BackgroundColor3 = Color3.fromRGB(120, 150, 230)
+		elseif def.rarity == "BossExclusive" then
+			fb.BackgroundColor3 = Color3.fromRGB(170, 100, 220)
+		else
+			fb.BackgroundColor3 = PART_COLORS.LootBox
+		end
+	else
+		fb.BackgroundColor3 = partColor
+			or AnimConfig.ElementColor[(def and def.element) or "Neutral"]
+			or Color3.fromRGB(120, 120, 130)
+	end
+	fb.BackgroundTransparency = 0.55
+	fb.BorderSizePixel = 0
+	fb.ZIndex = opts.zIndex or 1
+	fb.Parent = parent
+end
+
+--- Mount assembled weapon frame — blade preview + gem badge.
+function ItemIcon.MountFrame(parent: GuiObject, opts: FrameMountOpts?): ViewportFrame?
+	ItemIcon.Clear(parent)
+	opts = opts or {}
+	local bladeDefId = opts.bladeDefId
+	local bladeDef = bladeDefId and ItemDefs.Get(bladeDefId)
+	local template = bladeTemplateForDef(bladeDef)
+	if template then
+		mountViewport(parent, template, opts)
+	elseif bladeDefId then
+		mountFallback(parent, bladeDefId, opts)
+	else
+		mountFallback(parent, "weapon_frame", opts)
+	end
+	if opts.showGemBadge ~= false and opts.element and opts.element ~= "Neutral" then
+		mountGemBadge(parent, opts.element, opts.zIndex)
+	end
+	return parent:FindFirstChild("ItemIconVp") :: ViewportFrame?
+end
+
+--- Mount 3/4 preview into parent. Returns ViewportFrame or nil.
+function ItemIcon.Mount(parent: GuiObject, defId: string?, opts: MountOpts?): ViewportFrame?
+	ItemIcon.Clear(parent)
+	if not defId then
+		return nil
+	end
+	opts = opts or {}
+	local def = ItemDefs.Get(defId)
+	local template = ItemIcon.ResolveTemplate(defId)
+	if not template then
+		mountFallback(parent, defId, opts)
+		if opts.showGemBadge ~= false and def and def.kind == "ElementGem" and def.element then
+			mountGemBadge(parent, def.element, opts.zIndex)
+		end
+		return nil
+	end
+
+	local vp = mountViewport(parent, template, opts)
+	if opts.showGemBadge ~= false and def and def.kind == "ElementGem" and def.element then
+		mountGemBadge(parent, def.element, opts.zIndex)
+	end
 	return vp
 end
 

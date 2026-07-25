@@ -48,6 +48,10 @@ end
 
 local function resolveHp(entity: Instance): (number, number)
 	local kind = resolveKind(entity)
+	if kind == "Training" and entity:GetAttribute("IsCombatDummy") then
+		local hp, maxHp = DummyService.GetHpFor(entity)
+		return hp, maxHp
+	end
 	if kind == "Training" and entity.Name == "TrainingDummy" then
 		local hp, maxHp = DummyService.GetHp()
 		return hp, maxHp

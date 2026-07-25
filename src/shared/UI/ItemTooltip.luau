@@ -162,7 +162,12 @@ function ItemTooltip.Build(ctx: TooltipContext): string
 		return "Unknown item."
 	end
 
-	header(lines, def.name or defId or "?")
+	local title = def.name or defId or "?"
+	if defId == "weapon_frame" and ctx.resolvedMain and ctx.resolvedMain.complete then
+		title = ctx.resolvedMain.displayName or title
+	end
+
+	header(lines, title)
 	local kind = def.kind or ""
 	local bits = { kind }
 	if def.rarity then

@@ -37,6 +37,11 @@ export type OnHitStatus = {
 	params: { [string]: any }?,
 }
 
+export type StatusApplyOpts = {
+	helmOverride: boolean?,
+	gemElement: string?,
+}
+
 local bonuses: { [number]: PassiveBonus } = {}
 local passiveIds: { [number]: { [string]: boolean } } = {}
 local synergyByUser: { [number]: SynergyConfig.SynergyResult } = {}
@@ -71,6 +76,17 @@ local function elementStatus(element: string): OnHitStatus?
 		params = { slowPct = 50 }
 	end
 	return { id = sig.id, duration = dur, dps = dps, params = params }
+end
+
+local function helmBlocksPure(element: string, applyOpts: StatusApplyOpts?): boolean
+	if not applyOpts or not applyOpts.helmOverride then
+		return false
+	end
+	local gem = applyOpts.gemElement
+	if not gem or gem == "" or gem == "Neutral" then
+		return false
+	end
+	return element ~= gem
 end
 
 local function registerPassive(passiveSet: { [string]: boolean }, abilityId: string)
@@ -236,13 +252,18 @@ function PassiveService.TryThornReflect(victimUserId: number, attacker: Player, 
 end
 
 --- Pure x3: guaranteed signature on every main-hand LA hit. L3 / status_weaponpassive otherwise.
-function PassiveService.RollLaOnHitStatus(userId: number, comboStep: number, element: string): OnHitStatus?
+function PassiveService.RollLaOnHitStatus(
+	userId: number,
+	comboStep: number,
+	element: string,
+	applyOpts: StatusApplyOpts?
+): OnHitStatus?
 	if element == "Neutral" or element == "" then
 		return nil
 	end
 
 	local synergy = PassiveService.GetSynergy(userId)
-	if synergy.band == "Pure" and synergy.pureElement == element then
+	if synergy.band == "Pure" and synergy.pureElement == element and not helmBlocksPure(element, applyOpts) then
 		return elementStatus(element)
 	end
 
@@ -299,9 +320,18 @@ function PassiveService.ScaleOnHitStatus(
 end
 
 --- Scale + Pure x3 element perks (CHEMISTRY_ENGINE §3.4).
-function PassiveService.FinalizeLaOnHitStatus(userId: number, status: OnHitStatus, element: string?): OnHitStatus
+function PassiveService.FinalizeLaOnHitStatus(
+	userId: number,
+	status: OnHitStatus,
+	element: string?,
+	applyOpts: StatusApplyOpts?
+): OnHitStatus
 	local scaled = PassiveService.ScaleOnHitStatus(userId, status)
 	if not element or element == "Neutral" then
+		return scaled
+	end
+
+	if helmBlocksPure(element, applyOpts) then
 		return scaled
 	end
 

@@ -33,9 +33,9 @@ local QueueConfig = {
 		pvp_2v2_ranked = { id = "pvp_2v2_ranked", mode = "PvP", teamSize = 2, placeKey = "Pvp2v2", ranked = true },
 		pvp_3v3_casual = { id = "pvp_3v3_casual", mode = "PvP", teamSize = 3, placeKey = "Pvp3v3", ranked = false },
 		pvp_3v3_ranked = { id = "pvp_3v3_ranked", mode = "PvP", teamSize = 3, placeKey = "Pvp3v3", ranked = true },
-		pve_boss_solo = { id = "pve_boss_solo", mode = "PvE", teamSize = 1, placeKey = "PveBossEye" },
-		pve_boss_duo = { id = "pve_boss_duo", mode = "PvE", teamSize = 2, placeKey = "PveBossEye" },
-		pve_boss_trio = { id = "pve_boss_trio", mode = "PvE", teamSize = 3, placeKey = "PveBossEye" },
+		pve_boss_solo = { id = "pve_boss_solo", mode = "PvE", teamSize = 1, placeKey = "PveBoss" },
+		pve_boss_duo = { id = "pve_boss_duo", mode = "PvE", teamSize = 2, placeKey = "PveBoss" },
+		pve_boss_trio = { id = "pve_boss_trio", mode = "PvE", teamSize = 3, placeKey = "PveBoss" },
 	} :: { [QueueId]: QueueDef },
 }
 

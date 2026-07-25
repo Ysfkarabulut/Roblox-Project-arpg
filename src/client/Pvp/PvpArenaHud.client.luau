@@ -1,5 +1,5 @@
 --[[
-	PvP arena HUD — countdown, arena name, gas phase hints.
+	PvP arena HUD — countdown, match timer, gas phase hints.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,7 +39,6 @@ local banner = UiTheme.Label({
 	bg = C.Bg,
 })
 banner.AnchorPoint = Vector2.new(0.5, 0)
-banner.BackgroundTransparency = 0.25
 banner.Visible = false
 UiTheme.Corner(banner, UiTheme.Radius.Lg)
 
@@ -55,9 +54,32 @@ local sub = UiTheme.Label({
 sub.AnchorPoint = Vector2.new(0.5, 0)
 sub.Visible = false
 
+local timer = UiTheme.Label({
+	parent = gui,
+	name = "Timer",
+	size = UDim2.fromOffset(120, 36),
+	position = UDim2.new(1, -132, 0, 24),
+	font = UiTheme.Font.Display,
+	textSize = UiTheme.TextSize.Title,
+	color = C.TextBright,
+	xAlign = Enum.TextXAlignment.Center,
+	bg = C.Bg,
+})
+timer.AnchorPoint = Vector2.new(0, 0)
+timer.Visible = false
+UiTheme.Corner(timer, UiTheme.Radius.Md)
+
+local function formatTimer(sec: number): string
+	local total = math.max(0, math.floor(sec))
+	local minutes = math.floor(total / 60)
+	local seconds = total % 60
+	return string.format("%d:%02d", minutes, seconds)
+end
+
 local function hide()
 	banner.Visible = false
 	sub.Visible = false
+	timer.Visible = false
 end
 
 ArenaState.OnClientEvent:Connect(function(payload: any)
@@ -74,6 +96,14 @@ ArenaState.OnClientEvent:Connect(function(payload: any)
 	sub.Visible = true
 	banner.TextColor3 = C.TextBright
 
+	local remaining = if typeof(payload.remainingSec) == "number" then payload.remainingSec else nil
+	if remaining and (phase == "Fight" or phase == "Shrink" or phase == "Gas") then
+		timer.Visible = true
+		timer.Text = formatTimer(remaining)
+	else
+		timer.Visible = false
+	end
+
 	if phase == "Countdown" then
 		local sec = if typeof(payload.seconds) == "number" then payload.seconds else 3
 		local name = if typeof(payload.arenaName) == "string" then payload.arenaName else "Arena"
@@ -82,7 +112,8 @@ ArenaState.OnClientEvent:Connect(function(payload: any)
 	elseif phase == "Fight" then
 		banner.Text = "FIGHT"
 		banner.TextColor3 = C.SuccessBright
-		sub.Text = if typeof(payload.arenaName) == "string" then payload.arenaName else ""
+		local ranked = payload.ranked == true and "Ranked" or "Casual"
+		sub.Text = if typeof(payload.arenaName) == "string" then `{payload.arenaName} · {ranked}` else ranked
 	elseif phase == "Shrink" then
 		banner.Text = "ARENA SHRINKING"
 		banner.TextColor3 = C.WarningDark

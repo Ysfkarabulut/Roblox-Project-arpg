@@ -7,11 +7,27 @@ local Players = game:GetService("Players")
 local StatusService = require(script.Parent.StatusService)
 local StaminaService = require(script.Parent.StaminaService)
 local StatService = require(script.Parent.StatService)
+local ComboTracker = require(script.Parent.ComboTracker)
+local CrossbowReloadService = require(script.Parent.CrossbowReloadService)
+local GuardService = require(script.Parent.GuardService)
+local DodgeService = require(script.Parent.DodgeService)
+local ParryService = require(script.Parent.ParryService)
+local AbilityService = require(script.Parent.AbilityService)
+local LightAttackService = require(script.Parent.LightAttackService)
 
 local MatchResetService = {}
 
 function MatchResetService.ResetPlayer(plr: Player)
 	local char = plr.Character
+	local userId = plr.UserId
+	ComboTracker.Clear(userId)
+	CrossbowReloadService.Clear(userId)
+	GuardService.Clear(userId)
+	DodgeService.Clear(userId)
+	ParryService.Clear(userId)
+	AbilityService.Clear(userId)
+	LightAttackService.Clear(userId)
+
 	if not char then
 		return
 	end

@@ -50,6 +50,9 @@ local SetStats = remoteEvent("SetStats")
 local ResetStats = remoteEvent("ResetStats")
 local ResetDummy = remoteEvent("ResetDummy")
 local SetDummyMaxHp = remoteEvent("SetDummyMaxHp")
+local SpawnDummies = remoteEvent("SpawnDummies")
+local SpawnLaDummy = remoteEvent("SpawnLaDummy")
+local ClearSpawnedDummies = remoteEvent("ClearSpawnedDummies")
 local GrantPremium = remoteEvent("GrantPremium")
 local SimulateMatchResult = remoteEvent("SimulateMatchResult")
 local AutoFillHotbar = remoteEvent("AutoFillHotbar")
@@ -124,7 +127,7 @@ local function buildDevState(userId: number)
 	return {
 		stats = StatService.Get(userId),
 		derived = StatService.Derived(userId),
-		dummy = { hp = hp, maxHp = maxHp },
+		dummy = { hp = hp, maxHp = maxHp, spawned = DummyService.GetSpawnedCount() },
 		studio = RunService:IsStudio(),
 	}
 end
@@ -231,6 +234,31 @@ SetDummyMaxHp.OnServerEvent:Connect(function(player: Player, maxHp: number)
 	end
 	DummyService.SetMaxHp(maxHp)
 	notify(player, true, `Dummy max HP = {math.floor(maxHp)}`)
+end)
+
+SpawnDummies.OnServerEvent:Connect(function(player: Player, count: number?)
+	if not isDev(player) then
+		return
+	end
+	local n = if typeof(count) == "number" then count else 3
+	local spawned = DummyService.SpawnExtras(n)
+	notify(player, true, `Spawned {spawned} training dummy(s)`, { dummy = { spawned = DummyService.GetSpawnedCount() } })
+end)
+
+SpawnLaDummy.OnServerEvent:Connect(function(player: Player)
+	if not isDev(player) then
+		return
+	end
+	DummyService.SpawnLaAttacker()
+	notify(player, true, "LA training dummy spawned — attacks nearby players")
+end)
+
+ClearSpawnedDummies.OnServerEvent:Connect(function(player: Player)
+	if not isDev(player) then
+		return
+	end
+	DummyService.ClearSpawned()
+	notify(player, true, "Extra dummies cleared")
 end)
 
 AutoFillHotbar.OnServerEvent:Connect(function(player: Player)

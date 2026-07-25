@@ -60,7 +60,7 @@ function MatchTeleport.StartMatch(payload: MatchPayload)
 			#players,
 			HttpService:JSONEncode(teleportData)
 		))
-		if placeKey == "PveBossEye" then
+		if PlaceConfig.IsPveBossKey(placeKey) then
 			local userIds = {}
 			for _, p in players do
 				table.insert(userIds, p.UserId)

@@ -141,9 +141,10 @@ local function collectTargets(caster: Player, family, look: Vector3, aimPos: Vec
 		end
 	else
 		DummyService.Ensure()
-		local dummy = Workspace:FindFirstChild("TrainingDummy")
-		if dummy and dummy:IsA("Model") then
-			tryAdd(dummy)
+		for _, inst in Workspace:GetChildren() do
+			if inst:IsA("Model") and inst:GetAttribute("IsCombatDummy") then
+				tryAdd(inst)
+			end
 		end
 	end
 
@@ -270,10 +271,13 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 	local shredPct = maceShredPct(def)
 	local base = resolved.baseDamage
 	local scale = scaling(userId, def)
-	local el = resolved.element or "Neutral"
+	local gemEl = resolved.element or "Neutral"
+	local el = gemEl
+	local helmOverride = false
 	if player.Character then
-		el = PassiveService.ResolveLaElement(userId, el, player.Character)
+		el, helmOverride = PassiveService.ResolveLaElement(userId, el, player.Character)
 	end
+	local statusApplyOpts = { helmOverride = helmOverride, gemElement = gemEl }
 
 	local hits = {}
 	for _, target in targets do
@@ -281,7 +285,7 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 		if def.family == "Dagger" and target:IsA("Model") and isBackstab(player, target) then
 			backstab = CombatConfig.KBackstab
 		end
-		local onHit = PassiveService.RollLaOnHitStatus(userId, usedStep, el)
+		local onHit = PassiveService.RollLaOnHitStatus(userId, usedStep, el, statusApplyOpts)
 		local axeMult = if def.family == "Axe" then CombatConfig.AxeGuardStamMult else 1
 
 		local report = DamageService.DealDirect({
@@ -297,6 +301,7 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 			defenceShredPct = shredPct,
 			kind = "LA",
 			applyOnHitStatus = onHit,
+			statusApplyOpts = statusApplyOpts,
 			pressureGroupId = pressureGroupId,
 		})
 		if report.onHitApplied and onHit and onHit.id == "Wet" and target:IsA("Model") then

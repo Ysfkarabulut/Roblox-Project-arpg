@@ -3,7 +3,10 @@
 	Split from GearUI to stay under Luau's 200-local register limit.
 ]]
 
-local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
+local GemSymbol = require(ReplicatedStorage.Shared.UI.GemSymbol)
 
 local GearForgePanel = {}
 
@@ -17,6 +20,8 @@ export type ForgeApi = {
 
 export type MountDeps = {
 	parent: Frame,
+	panelPosition: UDim2?,
+	panelSize: UDim2?,
 	colors: {
 		slot: Color3,
 		slotEq: Color3,
@@ -55,8 +60,9 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 
 	local forgePanel = Instance.new("Frame")
 	forgePanel.Name = "ForgePanel"
-	forgePanel.Size = UDim2.new(1, -20, 0, 100)
-	forgePanel.Position = UDim2.new(0, 10, 0.36, 0)
+	forgePanel.Size = deps.panelSize or UDim2.new(1, -20, 0, 100)
+	forgePanel.Position = deps.panelPosition or UDim2.new(0, 10, 0, 248)
+	forgePanel.ZIndex = 2
 	forgePanel.BackgroundColor3 = Color3.fromRGB(28, 32, 38)
 	forgePanel.BorderSizePixel = 0
 	forgePanel.Parent = deps.parent
@@ -159,6 +165,34 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 		return true, nil
 	end
 
+	local forgeGemBadges: { [string]: Frame } = {}
+
+	local function clearForgeGemBadge(slotName: string)
+		local badge = forgeGemBadges[slotName]
+		if badge then
+			badge:Destroy()
+			forgeGemBadges[slotName] = nil
+		end
+	end
+
+	local function refreshForgeGemBadge(slotName: string, def: any?)
+		clearForgeGemBadge(slotName)
+		if slotName ~= "gem" or not def or not def.element or def.element == "Neutral" then
+			return
+		end
+		local btn = forgeButtons[slotName]
+		if not btn then
+			return
+		end
+		forgeGemBadges[slotName] = GemSymbol.Mount({
+			parent = btn,
+			element = def.element,
+			size = UDim2.fromOffset(16, 16),
+			position = UDim2.new(1, -3, 0, 3),
+			zIndex = 5,
+		})
+	end
+
 	local function refresh()
 		local ready = attached.handle ~= nil and attached.blade ~= nil and attached.pommel ~= nil
 		forgeBtn.BackgroundColor3 = if ready then Color3.fromRGB(80, 150, 80) else Color3.fromRGB(55, 70, 55)
@@ -166,11 +200,13 @@ function GearForgePanel.Mount(deps: MountDeps): ForgeApi
 			local uuid = attached[slotName]
 			local btn = forgeButtons[slotName]
 			local label = forgeLabels[slotName]
+			clearForgeGemBadge(slotName)
 			if uuid then
 				local item = deps.findItemByUuid(uuid)
 				local def = item and ItemDefs.Get(item.defId)
 				label.Text = deps.shortName(def and def.name or "?", 9)
 				btn.BackgroundColor3 = deps.colors.slotEq
+				refreshForgeGemBadge(slotName, def)
 			else
 				label.Text = "Attach"
 				btn.BackgroundColor3 = deps.colors.slot

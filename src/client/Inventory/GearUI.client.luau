@@ -1,6 +1,6 @@
 --[[
 	3-panel gear UI: Stats | Loadout | Inventory
-	I / L toggle · Esc close
+	I toggle · Esc close
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -36,7 +36,7 @@ end
 
 local gui = UiTheme.ScreenGui({
 	name = "GearUI",
-	displayOrder = UiTheme.DisplayOrder.Panel,
+	displayOrder = UiTheme.DisplayOrder.Gear,
 	zIndexBehavior = Enum.ZIndexBehavior.Sibling,
 })
 gui.Parent = playerGui
@@ -100,6 +100,9 @@ local okToast, UiToast = pcall(function()
 end)
 local okIcon, ItemIcon = pcall(function()
 	return require(script.Parent.ItemIcon)
+end)
+local okGemSymbol, GemSymbol = pcall(function()
+	return require(ReplicatedStorage.Shared.UI.GemSymbol)
 end)
 if not (okSlots and okHotbar and okCombat and okIcon and okUpgrade and okTooltip and okGlossary and okAbilityTip and okHoverTip and okToast and okResolver) then
 	failBoot("GearUI config require failed — check Output")
@@ -190,6 +193,8 @@ local snapshot = {
 		synergyBand = "None",
 		synergyElement = nil,
 		synergyPerk = "",
+		synergyDefenceBonusPct = 0,
+		synergyResistBonusPct = 0,
 	},
 	resolvedMain = nil :: any,
 	premiumCurrency = 0,
@@ -270,6 +275,45 @@ local function findItemByUuid(uuid: string?)
 		end
 	end
 	return nil
+end
+
+local function resolveWeaponFrame(item: any)
+	if not okResolver or not WeaponResolver or not item or item.defId ~= "weapon_frame" then
+		return nil
+	end
+	return WeaponResolver.ResolveFrame(player.UserId, item, function(_uid, partUuid)
+		return findItemByUuid(partUuid)
+	end)
+end
+
+local function frameDisplayName(item: any, resolved: any?): string
+	if resolved and resolved.complete and resolved.displayName then
+		return resolved.displayName
+	end
+	if resolved and resolved.frameUuid then
+		return "Incomplete Frame"
+	end
+	local def = item and ItemDefs.Get(item.defId)
+	return def and def.name or "?"
+end
+
+local function mountItemIcon(host: GuiObject, item: any, opts: { zIndex: number?, yawDeg: number?, pitchDeg: number?, distanceMul: number? }?)
+	opts = opts or {}
+	if item.defId == "weapon_frame" then
+		local resolved = resolveWeaponFrame(item)
+		if resolved then
+			ItemIcon.MountFrame(host, {
+				bladeDefId = resolved.bladeDefId,
+				element = resolved.element,
+				zIndex = opts.zIndex or 2,
+				yawDeg = opts.yawDeg,
+				pitchDeg = opts.pitchDeg,
+				distanceMul = opts.distanceMul,
+			})
+			return
+		end
+	end
+	ItemIcon.Mount(host, item.defId, opts)
 end
 
 local function frameHandleType(frameUuid: string?): string?
@@ -612,6 +656,14 @@ local function secondaryFromStats()
 	local defence = d.totalDefence or d.defenceFromVit or (vit * CombatConfig.KVitDef)
 	local resist = d.totalResist or d.resistFromVit or (vit * CombatConfig.KVitRes)
 	local dr = math.min(defence * CombatConfig.KDr, CombatConfig.DrCapPvp)
+	local defSynergyPct = (d.synergyDefenceBonusPct or 0) * 100
+	local resSynergyPct = (d.synergyResistBonusPct or 0) * 100
+	local defenceLabel = if defSynergyPct > 0
+		then string.format("%.0f  (DR %.0f%% · +%.0f%% synergy)", defence, dr, defSynergyPct)
+		else string.format("%.0f  (DR %.0f%%)", defence, dr)
+	local resistLabel = if resSynergyPct > 0
+		then string.format("%.0f  (+%.0f%% synergy)", resist, resSynergyPct)
+		else string.format("%.0f", resist)
 	local statusPot = int_ * 0.5 + (d.passiveStatusPotency or 0)
 	local buffPot = d.totalBuffPotency or (int_ * 0.25 + (d.passiveBuffPotency or 0))
 	local directMult = d.passiveDirectMult or 1
@@ -622,8 +674,8 @@ local function secondaryFromStats()
 	local rows = {
 		{ "HP", string.format("%d", math.floor(d.hp or 0)), Color3.fromRGB(100, 220, 130) },
 		{ "Stamina", string.format("%d", math.floor(d.stamina or 0)), Color3.fromRGB(240, 210, 80) },
-		{ "Defence", string.format("%.0f  (DR %.0f%%)", defence, dr), Color3.fromRGB(120, 190, 255) },
-		{ "Resist", string.format("%.0f", resist), Color3.fromRGB(150, 200, 255) },
+		{ "Defence", defenceLabel, Color3.fromRGB(120, 190, 255) },
+		{ "Resist", resistLabel, Color3.fromRGB(150, 200, 255) },
 		{ "Crit Chance", critLabel, Color3.fromRGB(255, 180, 100) },
 		{ "Crit Damage", string.format("%.0f%%", critDmg), Color3.fromRGB(255, 120, 100) },
 		{ "Attack Speed", string.format("%.0f%%", asMult * 100), Color3.fromRGB(180, 255, 180) },
@@ -1137,8 +1189,9 @@ filterLayout.Parent = filterBar
 local filterButtons: { [string]: TextButton } = {}
 
 local invGrid = Instance.new("ScrollingFrame")
-invGrid.Size = UDim2.new(1, -20, 0.32, -8)
+invGrid.Size = UDim2.new(1, -20, 0, 168)
 invGrid.Position = UDim2.fromOffset(10, 72)
+invGrid.ZIndex = 4
 invGrid.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
 invGrid.BorderSizePixel = 0
 invGrid.ScrollBarThickness = 3
@@ -1163,6 +1216,8 @@ do
 	local GearForgePanel = require(script.Parent.GearForgePanel)
 	forgeApi = GearForgePanel.Mount({
 		parent = invPanel,
+		panelPosition = UDim2.new(0, 10, 0, 248),
+		panelSize = UDim2.new(1, -20, 0, 100),
 		colors = {
 			slot = COL_SLOT,
 			slotEq = COL_SLOT_EQ,
@@ -1214,8 +1269,9 @@ end
 
 local detail = Instance.new("Frame")
 detail.Name = "Detail"
-detail.Size = UDim2.new(1, -20, 0.48, -120)
-detail.Position = UDim2.new(0, 10, 0.36, 108)
+detail.Size = UDim2.new(1, -20, 1, -364)
+detail.Position = UDim2.new(0, 10, 0, 356)
+detail.ZIndex = 5
 detail.BackgroundColor3 = Color3.fromRGB(24, 26, 30)
 detail.BorderSizePixel = 0
 detail.Parent = invPanel
@@ -1764,22 +1820,22 @@ refreshGear = function()
 			local uuid = snapshot.loadout[slotId]
 			local iconHost = btn:FindFirstChild("IconHost")
 			if uuid then
-				local defId = nil
-				for _, item in snapshot.items do
-					if item.uuid == uuid then
-						defId = item.defId
-						break
-					end
-				end
-				local def = defId and ItemDefs.Get(defId)
-				local displayName = def and def.name or "?"
+				local frameItem = findItemByUuid(uuid)
+				local defId = frameItem and frameItem.defId
+				local resolved = frameItem and resolveWeaponFrame(frameItem)
+				local displayName = frameDisplayName(frameItem, resolved)
 				if slotId == "main" and snapshot.resolvedMain and snapshot.resolvedMain.displayName then
 					displayName = shortName(snapshot.resolvedMain.displayName, 10)
+				elseif frameItem and frameItem.defId == "weapon_frame" then
+					displayName = shortName(displayName, 10)
+				else
+					local def = defId and ItemDefs.Get(defId)
+					displayName = shortName(def and def.name or "?", 10)
 				end
 				label.Text = displayName
 				btn.BackgroundColor3 = COL_SLOT_EQ
-				if iconHost and iconHost:IsA("GuiObject") and defId then
-					ItemIcon.Mount(iconHost, defId, { zIndex = 2, yawDeg = 40, pitchDeg = -18 })
+				if iconHost and iconHost:IsA("GuiObject") and frameItem then
+					mountItemIcon(iconHost, frameItem, { zIndex = 2, yawDeg = 40, pitchDeg = -18 })
 				end
 			else
 				label.Text = ""
@@ -1835,24 +1891,15 @@ refreshDetail = function()
 		end
 	end
 	assemblyPanel.Visible = isFrame
-	detailTitle.Text = if isFrame and snapshot.resolvedMain and selectedUuid == snapshot.loadout.main
-		then (snapshot.resolvedMain.displayName or "Weapon Frame")
-		else (def and def.name or (defId or "?"))
 
 	local isMainEquipped = selectedUuid ~= nil and snapshot.loadout.main == selectedUuid
-	local tipResolved = nil
-	if isFrame and itemData and okResolver and WeaponResolver then
-		if isMainEquipped and snapshot.resolvedMain then
-			tipResolved = snapshot.resolvedMain
-		else
-			local resolved = WeaponResolver.ResolveFrame(player.UserId, itemData, function(_uid, uuid)
-				return findItemByUuid(uuid)
-			end)
-			if resolved and resolved.complete then
-				tipResolved = resolved
-			end
-		end
-	end
+	local frameResolved = if isFrame and itemData then resolveWeaponFrame(itemData) else nil
+	local tipResolved = if frameResolved and frameResolved.complete then frameResolved else nil
+
+	detailTitle.Text = if isFrame and itemData
+		then frameDisplayName(itemData, frameResolved)
+		else (def and def.name or (defId or "?"))
+
 	detailDesc.Text = ItemTooltip.Build({
 		defId = defId,
 		def = def,
@@ -1895,6 +1942,19 @@ refreshDetail = function()
 				end
 			end
 			gemBtn.Text = "GEM\n" .. shortName(gemName, 10)
+			local oldGemBadge = gemBtn:FindFirstChild("GemBadge")
+			if oldGemBadge then
+				oldGemBadge:Destroy()
+			end
+			if okGemSymbol and GemSymbol and frameResolved and frameResolved.element and frameResolved.element ~= "Neutral" then
+				GemSymbol.Mount({
+					parent = gemBtn,
+					element = frameResolved.element,
+					size = UDim2.fromOffset(14, 14),
+					position = UDim2.new(1, -4, 0, 4),
+					zIndex = 4,
+				})
+			end
 			if pendingInstallSlot then
 				assemblyTitle.Text = `PICK {string.upper(pendingInstallSlot)} FROM BAG`
 				assemblyTitle.TextColor3 = COL_PENDING
@@ -1906,8 +1966,8 @@ refreshDetail = function()
 		assemblyTitle.Text = "WEAPON ASSEMBLY"
 		assemblyTitle.TextColor3 = COL_MUTED
 	end
-	if defId then
-		ItemIcon.Mount(detailIconHost, defId, { zIndex = 2, yawDeg = 38, pitchDeg = -20, distanceMul = 1.7 })
+	if itemData then
+		mountItemIcon(detailIconHost, itemData, { zIndex = 2, yawDeg = 38, pitchDeg = -20, distanceMul = 1.7 })
 	else
 		ItemIcon.Clear(detailIconHost)
 	end
@@ -1992,7 +2052,8 @@ refreshInventory = function()
 		stroke(btn, Color3.fromRGB(70, 74, 82))
 		if item then
 			local def = ItemDefs.Get(item.defId)
-			local name = def and def.name or item.defId
+			local resolved = if item.defId == "weapon_frame" then resolveWeaponFrame(item) else nil
+			local name = frameDisplayName(item, resolved)
 			local equipped = isEquipped(item.uuid)
 			local selected = selectedUuid == item.uuid
 			btn.BackgroundColor3 = if selected
@@ -2007,7 +2068,7 @@ refreshInventory = function()
 			iconHost.BackgroundTransparency = 1
 			iconHost.ZIndex = 2
 			iconHost.Parent = btn
-			ItemIcon.Mount(iconHost, item.defId, { zIndex = 2, yawDeg = 36, pitchDeg = -18 })
+			mountItemIcon(iconHost, item, { zIndex = 2, yawDeg = 36, pitchDeg = -18 })
 
 			local label = Instance.new("TextLabel")
 			label.Size = UDim2.new(1, -4, 0, 12)
@@ -2019,6 +2080,23 @@ refreshInventory = function()
 			label.Text = shortName(name, 10)
 			label.ZIndex = 4
 			label.Parent = btn
+
+			if okHoverTip and HoverTooltip and okTooltip and ItemTooltip then
+				btn.MouseEnter:Connect(function()
+					local frameRes = if item.defId == "weapon_frame" then resolveWeaponFrame(item) else nil
+					local title = frameDisplayName(item, frameRes)
+					local body = ItemTooltip.Build({
+						defId = item.defId,
+						def = def,
+						itemData = item,
+						resolvedMain = if frameRes and frameRes.complete then frameRes else nil,
+					})
+					HoverTooltip.show(title, body, btn)
+				end)
+				btn.MouseLeave:Connect(function()
+					HoverTooltip.hide()
+				end)
+			end
 
 			btn.MouseButton1Click:Connect(function()
 				local frameUuid = assemblyFrameUuid or selectedUuid
@@ -2219,7 +2297,10 @@ UserInputService.InputBegan:Connect(function(input, _gp)
 	if isTyping() then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.I or input.KeyCode == Enum.KeyCode.L then
+	if input.KeyCode == Enum.KeyCode.I then
+		if player:GetAttribute("LoadoutLocked") == true then
+			return
+		end
 		setOpen(not open)
 		return
 	end
@@ -2237,35 +2318,62 @@ UserInputService.InputBegan:Connect(function(input, _gp)
 	end
 end)
 
+local quickGui = UiTheme.ScreenGui({
+	name = "GearQuickBar",
+	displayOrder = UiTheme.DisplayOrder.GearQuickBar,
+	ignoreInset = false,
+})
+quickGui.Parent = playerGui
+
 local bar = Instance.new("Frame")
 bar.Name = "GearToggleBar"
-bar.Size = UDim2.fromOffset(200, 36)
-bar.Position = UDim2.new(0.5, -100, 1, -160)
+bar.Size = UDim2.fromOffset(132, 36)
+bar.Position = UDim2.new(0.5, -66, 1, -132)
 bar.BackgroundColor3 = COL_BG
 bar.BorderSizePixel = 0
-bar.ZIndex = 5
-bar.Parent = gui
+bar.Parent = quickGui
 corner(bar, 8)
 stroke(bar)
 
-local function barBtn(text: string, x: number)
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.fromOffset(90, 28)
-	b.Position = UDim2.fromOffset(x, 4)
-	b.BackgroundColor3 = COL_SLOT
-	b.BorderSizePixel = 0
-	b.Font = Enum.Font.GothamBold
-	b.TextSize = 12
-	b.TextColor3 = COL_TEXT
-	b.Text = text
-	b.Parent = bar
-	corner(b, 6)
-	b.MouseButton1Click:Connect(function()
-		setOpen(not open)
-	end)
+local gearBtn = Instance.new("TextButton")
+gearBtn.Size = UDim2.fromOffset(120, 28)
+gearBtn.Position = UDim2.fromOffset(6, 4)
+gearBtn.BackgroundColor3 = COL_SLOT
+gearBtn.BorderSizePixel = 0
+gearBtn.Font = Enum.Font.GothamBold
+gearBtn.TextSize = 12
+gearBtn.TextColor3 = COL_TEXT
+gearBtn.Text = "Gear (I)"
+gearBtn.Parent = bar
+corner(gearBtn, 6)
+gearBtn.MouseButton1Click:Connect(function()
+	if player:GetAttribute("LoadoutLocked") == true then
+		return
+	end
+	setOpen(not open)
+end)
+
+local lockBadge = Instance.new("TextLabel")
+lockBadge.Name = "LoadoutLock"
+lockBadge.Size = UDim2.new(1, -12, 0, 14)
+lockBadge.Position = UDim2.fromOffset(6, -16)
+lockBadge.BackgroundTransparency = 1
+lockBadge.Font = Enum.Font.GothamBold
+lockBadge.TextSize = 10
+lockBadge.TextColor3 = COL_DANGER
+lockBadge.Text = "Loadout locked"
+lockBadge.Visible = false
+lockBadge.Parent = bar
+
+local function refreshLoadoutLock()
+	local locked = player:GetAttribute("LoadoutLocked") == true
+	lockBadge.Visible = locked
+	if locked and open then
+		setOpen(false)
+	end
 end
 
-barBtn("Inventory", 8)
-barBtn("Loadout", 102)
+player:GetAttributeChangedSignal("LoadoutLocked"):Connect(refreshLoadoutLock)
+refreshLoadoutLock()
 
-print("[GearUI] Stats | Loadout | Inventory+Forge — I/L")
+print("[GearUI] Stats | Loadout | Inventory+Forge — I")

@@ -17,6 +17,8 @@ export type MatchResult = {
 	mmrDelta: number?,
 	mmr: number?,
 	mmrTier: string?,
+	clearMs: number?,
+	clearTimeText: string?,
 }
 
 export type ProcessOutput = {

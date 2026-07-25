@@ -43,4 +43,14 @@ function ReactionTable.FindPair(idA: string, idB: string): ReactionDef?
 	return nil
 end
 
+--- If status is a reaction output, return the two parent status ids (for split icon UI).
+function ReactionTable.OutputParents(outputStatus: string): (string?, string?)
+	for _, r in ReactionTable.List do
+		if r.outputStatus == outputStatus then
+			return r.a, r.b
+		end
+	end
+	return nil, nil
+end
+
 return ReactionTable

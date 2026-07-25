@@ -43,6 +43,7 @@ local opponent: Model? = nil
 local ending = false
 local deathConns: { RBXScriptConnection } = {}
 local gasThread: thread? = nil
+local combatThread: thread? = nil
 local arenaStateRemote: RemoteEvent? = nil
 
 local function getArenaStateRemote(): RemoteEvent
@@ -93,9 +94,10 @@ local function getPlayers(): { Player }
 end
 
 local function hideTrainingDummy()
-	local dummy = workspace:FindFirstChild("TrainingDummy")
-	if dummy then
-		dummy.Parent = ServerStorage
+	for _, inst in workspace:GetChildren() do
+		if inst:IsA("Model") and inst:GetAttribute("IsCombatDummy") then
+			inst.Parent = ServerStorage
+		end
 	end
 end
 
@@ -103,9 +105,10 @@ local function restoreTrainingDummy()
 	if not PlaceRuntime.IsLobby() then
 		return
 	end
-	local dummy = ServerStorage:FindFirstChild("TrainingDummy")
-	if dummy and dummy:IsA("Model") then
-		dummy.Parent = workspace
+	for _, inst in ServerStorage:GetChildren() do
+		if inst:IsA("Model") and inst:GetAttribute("IsCombatDummy") then
+			inst.Parent = workspace
+		end
 	end
 end
 
@@ -120,6 +123,13 @@ local function stopGas()
 	if gasThread then
 		task.cancel(gasThread)
 		gasThread = nil
+	end
+end
+
+local function stopCombatTimer()
+	if combatThread then
+		task.cancel(combatThread)
+		combatThread = nil
 	end
 end
 
@@ -205,6 +215,7 @@ local function finishMatch(winningTeam: number?, winnerUserId: number?)
 	end
 	ending = true
 	stopGas()
+	stopCombatTimer()
 	clearDeathConns()
 	broadcastState({ phase = "Ended", winningTeam = winningTeam })
 
@@ -325,7 +336,8 @@ local function startGasPhase()
 	local dps = gasCfg.gasDps
 
 	gasThread = task.spawn(function()
-		broadcastState({ phase = "Shrink", seconds = shrinkDuration })
+		broadcastState({ phase = "Shrink", seconds = shrinkDuration, remainingSec = shrinkDuration })
+		local shrinkEnd = os.clock() + shrinkDuration
 		local t0 = os.clock()
 		while os.clock() - t0 < shrinkDuration do
 			if ending or not active then
@@ -333,14 +345,22 @@ local function startGasPhase()
 			end
 			local alpha = (os.clock() - t0) / shrinkDuration
 			shrink.Size = startSize:Lerp(endSize, alpha)
+			local remaining = math.ceil(shrinkEnd - os.clock())
+			if remaining > 0 then
+				broadcastState({ phase = "Shrink", seconds = shrinkDuration, remainingSec = remaining })
+			end
 			task.wait(0.25)
 		end
 
-		broadcastState({ phase = "Gas", dps = dps, seconds = dpsDuration })
+		broadcastState({ phase = "Gas", dps = dps, seconds = dpsDuration, remainingSec = dpsDuration })
 		local gasEnd = os.clock() + dpsDuration
 		while os.clock() < gasEnd do
 			if ending or not active then
 				return
+			end
+			local remaining = math.ceil(gasEnd - os.clock())
+			if remaining > 0 then
+				broadcastState({ phase = "Gas", dps = dps, seconds = dpsDuration, remainingSec = remaining })
 			end
 			for _, plr in getPlayers() do
 				local char = plr.Character
@@ -448,7 +468,15 @@ function PvpMatchService.Start(payload: StartPayload): boolean
 		PvpArenaBuilder.OpenGates(arena)
 	end
 	PvpTeamService.SetCombatLocked(false)
-	broadcastState({ phase = "Fight", bracket = bracket, arenaName = def.displayName })
+	local gasCfg = PvpArenaConfig.GasTiming(matchRanked)
+	broadcastState({
+		phase = "Fight",
+		bracket = bracket,
+		arenaName = def.displayName,
+		ranked = matchRanked,
+		combatSec = gasCfg.combatSec,
+		remainingSec = gasCfg.combatSec,
+	})
 
 	local players = getPlayers()
 	if practice then
@@ -467,9 +495,26 @@ function PvpMatchService.Start(payload: StartPayload): boolean
 		for _, plr in players do
 			wireDeath(plr)
 		end
-		local gasCfg = PvpArenaConfig.GasTiming(matchRanked)
+		local combatEndAt = os.clock() + gasCfg.combatSec
+		combatThread = task.spawn(function()
+			while active and not ending do
+				local remaining = math.ceil(combatEndAt - os.clock())
+				if remaining <= 0 then
+					break
+				end
+				broadcastState({
+					phase = "Fight",
+					bracket = bracket,
+					arenaName = def.displayName,
+					ranked = matchRanked,
+					remainingSec = remaining,
+				})
+				task.wait(1)
+			end
+		end)
 		task.delay(gasCfg.combatSec, function()
 			if active and not ending then
+				stopCombatTimer()
 				startGasPhase()
 			end
 		end)
