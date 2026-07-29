@@ -4,6 +4,7 @@
 
 local ItemDefs = require(script.Parent.Parent.Config.ItemDefs)
 local CombatConfig = require(script.Parent.Parent.Config.CombatConfig)
+local CombatKind = require(script.Parent.CombatKind)
 
 local WeaponResolver = {}
 
@@ -119,7 +120,7 @@ function WeaponResolver.ResolveFrame(userId: number, frameInst: any, inventoryFi
 		handleType = handleDef.handleType,
 		family = bladeDef.family,
 		subFamily = bladeDef.subFamily,
-		kind = bladeDef.kind or handleDef.kind,
+		kind = CombatKind.Resolve(handleDef.handleType, bladeDef.family, bladeDef.combatKind or bladeDef.kind),
 		element = element,
 		scaling = handleDef.scaling or "STR",
 		baseDamage = baseDamage,
@@ -152,6 +153,7 @@ function WeaponResolver.AsItemDef(resolved: ResolvedWeapon): any
 		baseDamage = resolved.baseDamage,
 		attackSpeedMult = resolved.attackSpeedMult,
 		familyPerk = resolved.familyPerk,
+		bladeDefId = resolved.bladeDefId,
 		abilities = resolved.abilities,
 	}
 end

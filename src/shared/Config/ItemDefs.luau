@@ -7,6 +7,7 @@ local ArmorMatrix = require(script.Parent.ArmorMatrix)
 local BossContent = require(script.Parent.BossContent)
 local RareArmorDefs = require(script.Parent.RareArmorDefs)
 local RoleArmorDefs = require(script.Parent.RoleArmorDefs)
+local ExoticContent = require(script.Parent.ExoticContent)
 local ArmorAbilityDefs = require(script.Parent.ArmorAbilityDefs)
 local FocusDefs = require(script.Parent.FocusDefs)
 local HandleDefs = require(script.Parent.HandleDefs)
@@ -43,6 +44,9 @@ end
 for id, def in RoleArmorDefs.Build() do
 	catalog[id] = def
 end
+for id, def in ExoticContent.Build() do
+	catalog[id] = def
+end
 for id, def in FocusDefs.Build() do
 	catalog[id] = def
 end
@@ -56,7 +60,7 @@ catalog.weapon_frame = {
 	kind = "WeaponFrame",
 	slotHints = { "main" },
 	element = nil,
-	desc = "Modular weapon — install Handle, Blade, Pommel; socket a Gem",
+	desc = "Modular weapon — install Handle, Blade, Pommel; socket Gem. Complete 1H frames may equip Off for dual wield.",
 }
 
 -- Handcrafted off-hand / utility (weapons are modular via Handle/Blade/Pommel)
@@ -186,14 +190,17 @@ function ItemDefs.LootEligible(def: any): boolean
 		return false
 	end
 	local kind = def.kind
-	if kind == "WeaponHandle" or kind == "WeaponBlade" or kind == "WeaponPommel" or kind == "ElementGem" then
+	if kind == "WeaponHandle" or kind == "WeaponPommel" or kind == "ElementGem" then
 		return true
 	end
+	if kind == "WeaponBlade" then
+		return def.rarity == "Rare" or def.rarity == "Exotic"
+	end
 	if kind == "Head" or kind == "Chest" or kind == "Hands" or kind == "Feets" then
-		return def.rarity == "Rare"
+		return def.rarity == "Rare" or def.rarity == "Exotic"
 	end
 	if kind == "Focus" then
-		return def.rarity == "Rare"
+		return def.rarity == "Rare" or def.rarity == "Exotic"
 	end
 	return false
 end
@@ -217,12 +224,54 @@ function ItemDefs.StarterDefIds(): { string }
 	local ids = {}
 	for id, def in catalog do
 		local r = def.rarity
-		if r ~= "BossExclusive" and def.kind ~= "LootBox" then
+		if r ~= "BossExclusive" and r ~= "Exotic" and def.kind ~= "LootBox" then
 			table.insert(ids, id)
 		end
 	end
 	table.sort(ids)
 	return ids
+end
+
+--- Studio / balance snapshot — total catalog counts by category.
+function ItemDefs.ContentSummary(): { [string]: number }
+	local counts = {
+		total = 0,
+		blades = 0,
+		bossBlades = 0,
+		rareArmor = 0,
+		commonArmor = 0,
+		focus = 0,
+		offHand = 0,
+		parts = 0,
+		lootEligible = 0,
+	}
+	for _, def in catalog do
+		counts.total += 1
+		local kind = def.kind
+		if kind == "WeaponBlade" then
+			if def.bossId then
+				counts.bossBlades += 1
+			else
+				counts.blades += 1
+			end
+		elseif kind == "Head" or kind == "Chest" or kind == "Hands" or kind == "Feets" then
+			if def.rarity == "Rare" then
+				counts.rareArmor += 1
+			else
+				counts.commonArmor += 1
+			end
+		elseif kind == "Focus" then
+			counts.focus += 1
+		elseif kind == "Shield" or kind == "Quiver" or kind == "Knot" or kind == "Weapon1H" or kind == "Wand" or kind == "Scepter" then
+			counts.offHand += 1
+		elseif ItemDefs.IsPartKind(kind) then
+			counts.parts += 1
+		end
+		if ItemDefs.LootEligible(def) then
+			counts.lootEligible += 1
+		end
+	end
+	return counts
 end
 
 return ItemDefs

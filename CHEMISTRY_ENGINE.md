@@ -204,8 +204,24 @@ Alan zinciri tetiklenince her etkilenen hedef için **ayrı** `ApplyStatus` (ken
 
 - Rock + Bleed → **Shatter** (savunma kırma)
 - Lightning + Poisoned → **Neurotoxin** (stamina drain)
-- *Yeni öneriler backlog'da kalır — `GDD.md` §16*
+- *Yeni öneriler backlog'da kalır — `GDD.md` §16 · evde polish `README` §3*
 
 ---
 
-*Son güncelleme: 2026-07 — reaksiyon §5.4 (v6); batch + FIFO örnekleri hizalı; R2/R8 FIFO.*
+## 7. UI — reaksiyon ipuçları (Gear inspect, 2026-07)
+
+Oyuncuya kimya **öğretici** katman (tam simülasyon değil):
+
+| UI | Dosya | İçerik |
+|----|-------|--------|
+| Stats panel | `GearUI` | SYNERGY band + 4 satır reaction primer |
+| Item hover/detail | `ItemTooltip` + `InspectHints` | Build synergy (`derived`) · element reaction list · 5 satır primer |
+| Ability hover | `AbilityTooltip` | Status uygulayan skill → ilgili `ReactionTable` çiftleri |
+
+Primer metni `ReactionTable.List` ile senkron. FIFO kuralı tooltip’te belirtilir.
+
+*Yeni reaksiyon çifti eklendiğinde `ReactionTable` + bu UI otomatik genişler; VFX/ikon polish evde backlog.*
+
+---
+
+*Son güncelleme: 2026-07 — §7 inspect UI; reaksiyon §5.4 (v6); batch + FIFO.*

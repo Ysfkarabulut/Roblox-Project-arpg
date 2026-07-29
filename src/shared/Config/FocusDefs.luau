@@ -97,6 +97,36 @@ local PIECES = {
 		abilities = { "iron_heart_focuspassive" },
 		desc = "Focus passive · +18 Buff Potency",
 	},
+	{
+		id = "o_focus_firejar",
+		name = "Fire Jar",
+		kind = "Focus",
+		slotHints = { "off" },
+		element = "Fire",
+		roleHint = "INT",
+		abilities = { "fire_jar_focusactive" },
+		desc = "Focus · lob Ignite jar",
+	},
+	{
+		id = "o_focus_flashorb",
+		name = "Flash Orb",
+		kind = "Focus",
+		slotHints = { "off" },
+		element = "Lightning",
+		roleHint = "INT",
+		abilities = { "flash_orb_focusactive" },
+		desc = "Focus · ranged Shock orb",
+	},
+	{
+		id = "o_focus_bindingtotem",
+		name = "Binding Totem",
+		kind = "Focus",
+		slotHints = { "off" },
+		element = "Rock",
+		roleHint = "Control",
+		abilities = { "binding_totem_focusactive" },
+		desc = "Focus · ground Root totem",
+	},
 }
 
 function FocusDefs.Build(): { [string]: any }

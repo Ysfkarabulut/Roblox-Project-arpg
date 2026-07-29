@@ -5,6 +5,7 @@
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 local InventoryService = require(script.Parent.InventoryService)
+local LoadoutService = require(script.Parent.LoadoutService)
 local CurrencyService = require(script.Parent.CurrencyService)
 
 local WeaponAssemblyService = {}
@@ -97,6 +98,13 @@ function WeaponAssemblyService.InstallPart(userId: number, frameUuid: string, pa
 		return false, err
 	end
 
+	for _, slotName in PART_SLOTS do
+		local existing = (frame.parts :: any)[slotName]
+		if existing == partUuid then
+			return false, "DuplicatePart"
+		end
+	end
+
 	-- Remove existing part in slot
 	local existingUuid = (frame.parts :: any)[slot]
 	if existingUuid then
@@ -125,6 +133,13 @@ function WeaponAssemblyService.RemovePart(userId: number, frameUuid: string, slo
 		partInst.installedIn = nil
 	end
 	(frame.parts :: any)[slot] = nil
+	local resolved = WeaponResolver.ResolveFrame(userId, frame, function(uid, partUuid)
+		return InventoryService.Find(uid, partUuid)
+	end)
+	local equipSlot = LoadoutService.GetSlotOf(userId, frameUuid)
+	if equipSlot and not resolved.complete then
+		LoadoutService.Unequip(userId, equipSlot)
+	end
 	return true, nil
 end
 

@@ -6,8 +6,7 @@
 
 local PassiveDefs = require(script.Parent.PassiveDefs)
 local WeaponActiveDefs = require(script.Parent.WeaponActiveDefs)
-
-local BladeDefs = {}
+local CombatKind = require(script.Parent.Parent.Combat.CombatKind)
 
 local BLADES = {
 	-- ═══════════════════════════════════════════════════════════════════════
@@ -872,6 +871,7 @@ function BladeDefs.Build(): { [string]: any }
 			id = b.id,
 			name = b.name,
 			kind = "WeaponBlade",
+			combatKind = CombatKind.Resolve(b.handleType, b.family, b.kind),
 			handleType = b.handleType,
 			subFamily = b.subFamily,
 			family = b.family,

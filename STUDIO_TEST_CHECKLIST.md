@@ -434,7 +434,29 @@ _G.Lobby.Queue("pvp_1v1_casual")
 
 ---
 
-## Z. Dungeon stub (post-boss)
+## Z. Exotic content & inspect (2026-07)
+
+Referans: `GDD.md` §6.1 · `ExoticPerkDefs.luau`
+
+- [ ] Dev grant veya Gacha Exotic tier → exotic blade/armor/focus envantere düşer
+- [ ] Item hover: **Exotic Rule** satırı + abilities + synergy + reaction primer
+- [ ] Stats panel: REACTIONS bloğu (4 satır)
+- [ ] **Needleswarm:** L1/L2 %15 status proc (gem element gerekli)
+- [ ] **Stormlash:** Stats’ta Status Potency +18 görünür
+- [ ] **Bulwark Maul:** Slam+ isabet → self Fortify
+- [ ] **Arcane Lance:** Pierce Bolt guard’lı hedefe full damage
+- [ ] **Skullcracker:** Cone → guard break (stun)
+- [ ] **Windstring:** Bow L3 iki hedef
+- [ ] **Iron Bolt:** Burst → reload clear + Pierce hazır
+- [ ] **Phantom Hood:** Dodge sonrası kısa hyper armor
+- [ ] **Lifeweaver Crown:** Lifewave full HP ally → Regen HoT
+- [ ] **Quakehold Boots:** Iron Charge → Root
+- [ ] **Shadow Kit:** Smoke → 4s içinde Grapple anında tekrar
+- [ ] Hotbar cast doğru `sourceUuid` (aynı ability iki exotic’te)
+
+---
+
+## AA. Dungeon stub (post-boss)
 
 - [ ] `DungeonRunService` — 3 greybox oda + boss handoff
 - [ ] *(Canlı queue henüz yok — dev hook only)*

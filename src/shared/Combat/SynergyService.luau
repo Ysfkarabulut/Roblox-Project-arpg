@@ -176,23 +176,33 @@ function SynergyService.ResolveLoadout(
 	userId: number,
 	loadout: any,
 	resolvedMain: any,
-	getItemDef: (uuid: string) -> any
+	getItemInst: (uuid: string) -> any,
+	resolveFrame: ((uuid: string) -> any)?,
 ): SynergyConfig.SynergyResult
 	local mainEl = if resolvedMain and resolvedMain.complete then resolvedMain.element else nil
 	local mainW = mainWeight(resolvedMain)
 
-	local offDef = nil
+	local offEl = nil
 	if loadout.off then
-		local inst = getItemDef(loadout.off)
-		offDef = inst and ItemDefs.Get(inst.defId)
+		local inst = getItemInst(loadout.off)
+		if inst and inst.defId == "weapon_frame" and resolveFrame then
+			local resolvedOff = resolveFrame(loadout.off)
+			if resolvedOff and resolvedOff.complete and not neutral(resolvedOff.element) then
+				offEl = resolvedOff.element
+			end
+		elseif inst then
+			local offDef = ItemDefs.Get(inst.defId)
+			if offDef and not neutral(offDef.element) then
+				offEl = offDef.element
+			end
+		end
 	end
 	local chestDef = nil
 	if loadout.chest then
-		local inst = getItemDef(loadout.chest)
+		local inst = getItemInst(loadout.chest)
 		chestDef = inst and ItemDefs.Get(inst.defId)
 	end
 
-	local offEl = if offDef and not neutral(offDef.element) then offDef.element else nil
 	local chestEl = if chestDef and not neutral(chestDef.element) then chestDef.element else nil
 
 	if neutral(mainEl) and neutral(offEl) and neutral(chestEl) then

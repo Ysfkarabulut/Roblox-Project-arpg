@@ -1,7 +1,7 @@
 # Combat & Hasar Pipeline — Roblox Mimari Plan (F1)
 
-> **Referans:** `COMBAT_STAT_SHEET.md` §11 · `STATUS_SYSTEM.md` §6 · `CHEMISTRY_ENGINE.md` §5.4  
-> **Durum:** Tasarım → implementasyon rehberi; kod yok.
+> **Referans:** `COMBAT_STAT_SHEET.md` §11 · `STATUS_SYSTEM.md` §6 · `CHEMISTRY_ENGINE.md` §5.4 · `GDD.md` §6.1–§17  
+> **Durum:** Combat alpha — sunucu otoriteli pipeline **implemente** (`src/server/Combat/`, `src/shared/Combat/`).
 
 ---
 
@@ -374,10 +374,31 @@ ProjectileService.Fire(player, weaponDef, origin, direction)
 | Environmental tek çatı | §11.9 |
 | Execute anında ölüm | §11.10 |
 | TTK spam vs savunma | §12.11 |
+| **Exotic roster + `ExoticPerkDefs`** | `GDD.md` §6.1–§6.2 |
+| Hotbar `sourceUuid` | `GDD.md` §13 · `HotbarService` |
+| Item inspect synergy/reaction UI | `InspectHints` · `ItemTooltip` |
 
 ---
 
-## 10. Açık maddeler
+## 10. Exotic perk pipeline (2026-07)
+
+Rule-breaking item kuralları **data** (`ExoticPerkDefs.luau`) + **hook** (combat servisleri). Matrix aile perk’leri (`WeaponFamilyConfig`) exotic’lerde **family** ile devam eder; exotic kural **ek**.
+
+```
+ExoticContent (catalog) → ItemDefs merge
+ExoticPerkDefs (runtime) → blade/armor/focus def id
+    ├─ PassiveService.Refresh / RollLaOnHitStatus
+    ├─ LightAttackService (pierce targets, hyper armor)
+    ├─ AbilityService (slam, renew, pierce, burst, lifewave, charge, smoke→grapple)
+    ├─ DodgeService (phantom trail)
+    └─ DamageService.ignoreGuard · GuardService.ForceBreak
+```
+
+Tam eşya listesi → `GDD.md` §6.1.
+
+---
+
+## 11. Açık maddeler
 
 - [ ] `AbilityDefs` ilk tablo (Staff Firebolt 140%, vb.)
 - [ ] `k_backstab` playtest sayısı
@@ -385,4 +406,4 @@ ProjectileService.Fire(player, weaponDef, origin, direction)
 
 ---
 
-*Son güncelleme: 2026-07 — ResolveBatch (tick sonu), ComboTracker, FIFO kimya.*
+*Son güncelleme: 2026-07 — ExoticPerkDefs hook’ları · inspect tooltip · sourceUuid hotbar.*

@@ -87,6 +87,21 @@ function CombatPressureService.ClearUser(userId: number)
 	end
 end
 
+function CombatPressureService.ResetForPlayer(userId: number)
+	CombatPressureService.ClearUser(userId)
+	local uid = tostring(userId)
+	for key in juggleByPair do
+		if string.find(key, uid .. "_", 1, true) == 1 or string.find(key, "_" .. uid, 1, true) then
+			juggleByPair[key] = nil
+		end
+	end
+	for key in swingCounted do
+		if string.find(key, uid, 1, true) then
+			swingCounted[key] = nil
+		end
+	end
+end
+
 function CombatPressureService.ApplyHyperArmor(entity: Instance, duration: number, sourceUserId: number?)
 	if not entity or duration <= 0 then
 		return

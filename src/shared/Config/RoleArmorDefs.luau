@@ -103,6 +103,19 @@ local PIECES = {
 		abilities = { "crushing_palm_armoractive" },
 		desc = "Hands · 170% single-target smash · mix & match",
 	},
+	{
+		id = "a_feets_warbound",
+		name = "Warbound Greaves",
+		kind = "Feets",
+		slotHints = { "feets" },
+		element = "Steel",
+		defence = 12,
+		resist = 8,
+		rarity = "Rare",
+		roleHint = "STR",
+		abilities = { "quiet_step_armorpassive" },
+		desc = "Boots · Dodge stamina −8% · STR set feets",
+	},
 
 	-- DEX-lean
 	{
@@ -143,6 +156,19 @@ local PIECES = {
 		roleHint = "DEX",
 		abilities = { "fan_volley_armoractive" },
 		desc = "Hands · Gale Fan 3× cone · mix & match",
+	},
+	{
+		id = "a_feets_phantom",
+		name = "Phantom Striders",
+		kind = "Feets",
+		slotHints = { "feets" },
+		element = "Wind",
+		defence = 5,
+		resist = 20,
+		rarity = "Rare",
+		roleHint = "DEX",
+		abilities = { "dodge_step_armorpassive" },
+		desc = "Boots · Dodge procs Windy in 4 stud · DEX set feets",
 	},
 
 	-- INT-lean

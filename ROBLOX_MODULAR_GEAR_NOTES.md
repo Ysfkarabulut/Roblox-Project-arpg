@@ -36,6 +36,8 @@ abilities = {
 }
 ```
 
+**Meshy AI blade prompt’ları (68 item):** [`docs/BLADE_ASSET_PROMPTS.md`](docs/BLADE_ASSET_PROMPTS.md) — prefix: `low poly stylized fantasy`
+
 Generic gem-element actives: `strike_weaponactive`, `bolt_weaponactive`, `cone_weaponactive`, `dash_weaponactive`, `burst_weaponactive`, `*_r_weaponactive` tier.
 
 Buff / support actives (Buff Potency ölçekli): `heal_weaponactive`, `hot_weaponactive`, `fortify_weaponactive`, `frenzy_weaponactive`. Scepter ailesine atanmış; wand hasar odaklı kalır.
@@ -76,7 +78,21 @@ Kaynak: `LootTables.luau` · `MatchResultService.luau` (server/Loot)
 | PvP win | 40% | — |
 | PvE boss win (Eye) | 50% | 8% |
 
-**Gacha havuzu:** Common handle/pommel/gem (55%) · Rare blade (30%) · Rare armor (10%) · Bonus gem (5%). Common 48-blade catalog **dahil değil**. BossExclusive **asla** Gacha'da yok.
+**Gacha havuzu:** Common handle/pommel/gem (55%) · Rare blade (30%) · Rare armor (10%) · Bonus gem (5%) · **Exotic** tier (blade/armor/focus — düşük ağırlık, `LootTables` Exotic pool). Common 48-blade catalog **dahil değil**. BossExclusive **asla** Gacha'da yok.
+
+## Exotic content (v1 — 18)
+
+| Kaynak | Dosya |
+|--------|-------|
+| Katalog | `ExoticContent.luau` → `ItemDefs` merge |
+| Runtime perk | `ExoticPerkDefs.luau` |
+| Tasarım tablosu | `GDD.md` §6.1 |
+
+- **12 blade** · **6 armor** · **2 focus** (`o_exotic_shadow_kit`, `o_exotic_war_totem`)
+- Starter grant **hariç** · Gacha **Exotic** tier · Boss box **hariç**
+- `familyPerk` (EN tooltip) = `ExoticPerkDefs` ile senkron
+
+Dev exotic test: `DevRemotes` veya loot sim → `LootTables.RollGacha` Exotic tier.
 
 Dev: `DevRemotes.SimulateMatchResult:FireServer({ mode = "PvE", won = true, bossId = "eye" })`
 
@@ -177,6 +193,7 @@ StatService.GrantXp(userId, 120)
 
 - **BladeDefs**: 48 blade (12 aile x ST/AOE x Common/Rare)
 - **BossContent**: 3 boss blade (The Eye) — `BossExclusive`, starter'da yok
+- **ExoticContent**: 18 rule-breaking unique — `Exotic`, starter'da yok (`GDD.md` §6.1)
 - **RareArmorDefs**: Thornplate chest, Stormgrasp hands
 - **ArmorMatrix**: 32 pieces (8 element x 4 slot); playtest = Steel set
 

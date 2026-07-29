@@ -10,6 +10,9 @@ local StaminaService = require(script.Parent.StaminaService)
 local StatusService = require(script.Parent.StatusService)
 local PassiveService = require(script.Parent.PassiveService)
 local CombatPressureService = require(script.Parent.CombatPressureService)
+local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
+local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
+local ExoticPerkDefs = require(game.ReplicatedStorage.Shared.Config.ExoticPerkDefs)
 
 local DodgeService = {}
 
@@ -67,7 +70,7 @@ local function applyDodgeStep(userId: number, origin: Vector3)
 		if (pp.Position - origin).Magnitude > 4 then
 			return
 		end
-		StatusService.Apply(model, scaled.id, scaled.duration, {
+		CombatPressureService.TryApplyStatus(model, scaled.id, scaled.duration, {
 			sourceUserId = userId,
 			dps = scaled.dps,
 		})
@@ -151,6 +154,13 @@ function DodgeService.Try(player: Player, moveDir: Vector3?): (boolean, string?)
 	end
 
 	applyDodgeStep(userId, hrp.Position)
+
+	local loadout = LoadoutService.Get(userId)
+	local headInst = loadout.head and InventoryService.Find(userId, loadout.head)
+	local hoodPerk = headInst and ExoticPerkDefs.GetArmorPerk(headInst.defId)
+	if hoodPerk and hoodPerk.dodgePhantomTrailSec then
+		CombatPressureService.ApplyHyperArmor(char, hoodPerk.dodgePhantomTrailSec, userId)
+	end
 
 	if PassiveService.HasPassive(userId, "ward_step_armorpassive") then
 		StatusService.Apply(char, "Regen", 3, {

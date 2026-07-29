@@ -19,6 +19,7 @@ export type DirectCtx = {
 	atkElement: string?,
 	defChestElement: string?,
 	defence: number,
+	resist: number?,
 	defenceShredPct: number?, -- 0-100
 	critChancePct: number,
 	critDamagePct: number, -- e.g. 150
@@ -74,12 +75,15 @@ function DamagePipeline.ResolveDirect(ctx: DirectCtx): DirectResult
 	local afterMatchup = afterPerks * matchup
 
 	local drPct = 0
+	local resPct = 0
 	if not ctx.skipDr then
 		drPct = math.min(ctx.defence * CombatConfig.KDr, CombatConfig.DrCapPvp)
 		local shred = (ctx.defenceShredPct or 0) / 100
 		drPct = drPct * (1 - shred)
+		local resist = ctx.resist or 0
+		resPct = math.min(resist * CombatConfig.KRes, CombatConfig.ResCapPvp)
 	end
-	local afterDr = afterMatchup * (1 - drPct / 100)
+	local afterDr = afterMatchup * (1 - drPct / 100) * (1 - resPct / 100)
 
 	return {
 		rawBase = rawBase,

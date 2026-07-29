@@ -5,6 +5,7 @@
 
 local PassiveDefs = require(script.Parent.PassiveDefs)
 local WeaponActiveDefs = require(script.Parent.WeaponActiveDefs)
+local CombatKind = require(script.Parent.Parent.Combat.CombatKind)
 
 local BossContent = {}
 
@@ -94,6 +95,34 @@ local BLADES = {
 		abilities = { "dash_weaponactive", "keen_weaponpassive" },
 		desc = "Boss: The Breaker · dash strike + crit",
 	},
+	{
+		id = "b_boss_void_staff",
+		name = "Void Gaze Staff",
+		handleType = "2H_Staff",
+		subFamily = "Staff",
+		family = "Staff",
+		rarity = "BossExclusive",
+		bossId = "eye",
+		familyPerk = "Void bolt L3 · gaze potency",
+		bladeDamageMult = 1.10,
+		meshKey = "Staff2H_Blade_Rare",
+		abilities = { "bolt_r_weaponactive", "potency_weaponpassive", "status_weaponpassive" },
+		desc = "Boss: The Eye · rare bolt + potency + status proc",
+	},
+	{
+		id = "b_boss_rust_cleaver",
+		name = "Rust Cleaver",
+		handleType = "2H_AxeMace",
+		subFamily = "Axe",
+		family = "Axe",
+		rarity = "BossExclusive",
+		bossId = "breaker",
+		familyPerk = "Wide cleave L3 · rust slow on hit",
+		bladeDamageMult = 1.11,
+		meshKey = "Axe2H_Blade_Rare",
+		abilities = { "cone_r_weaponactive", "direct_weaponpassive" },
+		desc = "Boss: The Breaker · rare cleave cone + direct",
+	},
 }
 
 local function normalizeAbilities(abilities: { any }?): { any }
@@ -134,6 +163,7 @@ function BossContent.Build(): { [string]: any }
 			id = b.id,
 			name = b.name,
 			kind = "WeaponBlade",
+			combatKind = CombatKind.FromHandleAndFamily(b.handleType, b.family),
 			handleType = b.handleType,
 			subFamily = b.subFamily,
 			family = b.family,

@@ -188,11 +188,11 @@ local function moveSpeedMult(char: Model): number
 	local mult = 1
 	local attr = char:GetAttribute("MoveSpeedMult")
 	if typeof(attr) == "number" then
-		mult *= math.clamp(attr, 0, 1)
+		mult *= math.clamp(attr, 0.5, 2)
 	end
 	local combo = char:GetAttribute("ComboMoveMult")
 	if typeof(combo) == "number" then
-		mult *= math.clamp(combo, 0, 1)
+		mult *= math.clamp(combo, 0.5, 2)
 	end
 	return mult
 end

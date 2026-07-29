@@ -1,6 +1,6 @@
 --[[
 	LoadoutService — slot → item uuid.
-	Main slot: WeaponFrame only (modular weapons).
+	Main / off: WeaponFrame (modular). Off-hand 1H frames enable dual wield.
 ]]
 
 local Players = game:GetService("Players")
@@ -95,6 +95,38 @@ function LoadoutService.GetResolvedMain(userId: number)
 	return WeaponAssemblyService.ToResolved(userId, lo.main)
 end
 
+function LoadoutService.GetResolvedOff(userId: number)
+	local lo = ensure(userId)
+	if not lo.off then
+		return nil
+	end
+	local inst = InventoryService.Find(userId, lo.off)
+	if not inst or inst.defId ~= "weapon_frame" then
+		return nil
+	end
+	return WeaponAssemblyService.ToResolved(userId, lo.off)
+end
+
+--- StanceConfig input for off slot (frame → resolved pseudo-def, else catalog def).
+function LoadoutService.GetOffHandDef(userId: number): any?
+	local lo = ensure(userId)
+	if not lo.off then
+		return nil
+	end
+	local inst = InventoryService.Find(userId, lo.off)
+	if not inst then
+		return nil
+	end
+	if inst.defId == "weapon_frame" then
+		local resolved = WeaponAssemblyService.ToResolved(userId, lo.off)
+		if resolved and resolved.complete then
+			return WeaponResolver.AsItemDef(resolved)
+		end
+		return nil
+	end
+	return ItemDefs.Get(inst.defId)
+end
+
 -- 2H / Bow / Crossbow / Staff main → off Knot veya Quiver (türe göre)
 local function offCompatible(mainKind: string?, offKind: string?): boolean
 	if not mainKind then
@@ -106,7 +138,7 @@ local function offCompatible(mainKind: string?, offKind: string?): boolean
 	if mainKind == "Bow" or mainKind == "Crossbow" then
 		return offKind == nil or offKind == "Quiver"
 	end
-	-- 1H: shield, 1H weapon, focus, wand, scepter
+	-- 1H: shield, 1H weapon / frame, focus, wand, scepter
 	if offKind == "Quiver" or offKind == "Knot" then
 		return false
 	end
@@ -140,15 +172,34 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 		return false, "UnknownDef"
 	end
 
+	local lo = ensure(userId)
+
 	if slotId == "main" then
 		if def.kind ~= "WeaponFrame" then
 			return false, "MainRequiresFrame"
 		end
+		local resolvedMain = WeaponAssemblyService.ToResolved(userId, uuid)
+		if not resolvedMain.complete then
+			return false, "FrameIncomplete"
+		end
+	elseif inst.defId == "weapon_frame" then
+		if slotId ~= "off" then
+			return false, "WrongSlot"
+		end
+		local resolved = WeaponAssemblyService.ToResolved(userId, uuid)
+		if not resolved.complete then
+			return false, "FrameIncomplete"
+		end
+		if not LoadoutSlots.IsOneHandWeaponKind(resolved.kind) then
+			return false, "OffRequires1H"
+		end
+		local mainKind = lo.main and kindOfUuid(userId, lo.main) or nil
+		if mainKind and not LoadoutSlots.IsOneHandWeaponKind(mainKind) then
+			return false, "MainRequires1H"
+		end
 	elseif not ItemDefs.CanEquipInSlot(inst.defId, slotId) then
 		return false, "WrongSlot"
 	end
-
-	local lo = ensure(userId)
 
 	for _, s in LoadoutSlots.Order do
 		if (lo :: any)[s] == uuid then
@@ -166,7 +217,10 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 	elseif slotId == "off" then
 		local mainUuid = lo.main
 		local mainKind = mainUuid and kindOfUuid(userId, mainUuid) or nil
-		if not offCompatible(mainKind, def.kind) then
+		local offKind = if inst.defId == "weapon_frame"
+			then (WeaponAssemblyService.ToResolved(userId, uuid).kind)
+			else def.kind
+		if not offCompatible(mainKind, offKind) then
 			return false, "OffIncompatible"
 		end
 	end
@@ -176,14 +230,16 @@ function LoadoutService.Equip(userId: number, uuid: string, slotId: string): (bo
 end
 
 function LoadoutService.Import(userId: number, loadout: { [string]: string? })
-	loadouts[userId] = {
-		main = loadout.main,
-		off = loadout.off,
-		head = loadout.head,
-		chest = loadout.chest,
-		hands = loadout.hands,
-		feets = loadout.feets,
-	}
+	local seen: { [string]: boolean } = {}
+	local lo = emptyLoadout()
+	for _, slotId in LoadoutSlots.Order do
+		local uuid = loadout[slotId]
+		if uuid and not seen[uuid] then
+			(lo :: any)[slotId] = uuid
+			seen[uuid] = true
+		end
+	end
+	loadouts[userId] = lo
 end
 
 function LoadoutService.Clear(userId: number)

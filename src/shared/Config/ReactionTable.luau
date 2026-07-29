@@ -24,7 +24,7 @@ export type ReactionDef = {
 ReactionTable.List = {
 	{ id = "Vaporize", a = "Wet", b = "Ignite", kind = "Burst", burstFrom = "Ignite", burstFactor = 1.25 },
 	{ id = "ChainShock", a = "Wet", b = "Shock", kind = "Chain", chain = "Shock" },
-	{ id = "Chilled", a = "Wet", b = "Windy", kind = "Status", outputStatus = "Chilled", outputDuration = 1.5 },
+	{ id = "ChillReaction", a = "Wet", b = "Windy", kind = "Status", outputStatus = "Chilled", outputDuration = 1.5 },
 	{ id = "Thaw", a = "Chilled", b = "Ignite", kind = "Status", outputStatus = "Thaw", outputDuration = 2 },
 	{ id = "Cauterize", a = "Bleed", b = "Ignite", kind = "Hybrid", burstFrom = "Bleed", burstFactor = 0.75, outputStatus = "Cauterize", outputDuration = 3, outputDpsFactor = 1 },
 	{ id = "Blight", a = "Bleed", b = "Poisoned", kind = "Status", outputStatus = "Blight", outputDurationFrom = "maxInputs", outputDpsFactor = 2 },

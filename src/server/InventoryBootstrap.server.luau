@@ -58,19 +58,17 @@ local StanceConfig = require(game.ReplicatedStorage.Shared.Config.StanceConfig)
 local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
 
 local function resolveStance(userId: number): string
-	local loadout = LoadoutService.Get(userId)
 	local resolved = LoadoutService.GetResolvedMain(userId)
 	local mainDef = if resolved and resolved.complete then WeaponResolver.AsItemDef(resolved) else nil
-	local offDef = nil
-	if loadout.off then
-		local inst = InventoryService.Find(userId, loadout.off)
-		offDef = inst and ItemDefs.Get(inst.defId)
-	end
+	local offDef = LoadoutService.GetOffHandDef(userId)
 	return StanceConfig.Resolve(mainDef, offDef)
 end
 
-local function buildResolvedSummary(userId: number)
-	local resolved = LoadoutService.GetResolvedMain(userId)
+local function buildResolvedSummary(userId: number, frameUuid: string?)
+	if not frameUuid then
+		return nil
+	end
+	local resolved = WeaponAssemblyService.ToResolved(userId, frameUuid)
 	if not resolved or not resolved.complete then
 		return nil
 	end
@@ -91,20 +89,27 @@ end
 local function buildSnapshot(userId: number)
 	HotbarService.Prune(userId)
 	PassiveService.Refresh(userId)
+	local loadout = LoadoutService.Get(userId)
 	return {
 		items = InventoryService.GetItems(userId),
 		loadout = LoadoutService.Get(userId),
 		hotbar = HotbarService.GetBinds(userId),
+		hotbarSource = HotbarService.GetBindSources(userId),
 		actives = HotbarService.GetAvailableActives(userId),
 		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),
 		xpProgress = StatService.GetXpProgress(userId),
 		derived = StatService.Derived(userId),
 		stance = resolveStance(userId),
-		resolvedMain = buildResolvedSummary(userId),
+		resolvedMain = buildResolvedSummary(userId, loadout.main),
+		resolvedOff = buildResolvedSummary(userId, loadout.off),
 		premiumCurrency = CurrencyService.GetPremium(userId),
 		gemPreserveUnsocketCost = CurrencyService.GemPreserveUnsocketCost,
 	}
+end
+
+local function saveProfile(userId: number)
+	PlayerProfileService.Save(userId)
 end
 
 local function push(player: Player)
@@ -136,6 +141,7 @@ EquipItem.OnServerEvent:Connect(function(player: Player, uuid: string, slotId: s
 		if _G.RefreshWeaponVisuals then
 			_G.RefreshWeaponVisuals(player)
 		end
+		saveProfile(player.UserId)
 	end
 	push(player)
 end)
@@ -152,19 +158,23 @@ UnequipSlot.OnServerEvent:Connect(function(player: Player, slotId: string)
 	if _G.RefreshWeaponVisuals then
 		_G.RefreshWeaponVisuals(player)
 	end
+	saveProfile(player.UserId)
 	push(player)
 end)
 
-BindAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, slotIndex: number)
+BindAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, slotIndex: number, sourceUuid: any)
 	if isLoadoutLocked(player.UserId) then
 		return
 	end
 	if typeof(abilityId) ~= "string" or typeof(slotIndex) ~= "number" then
 		return
 	end
-	local ok, err = HotbarService.Bind(player.UserId, abilityId, slotIndex)
+	local src = if typeof(sourceUuid) == "string" then sourceUuid else nil
+	local ok, err = HotbarService.Bind(player.UserId, abilityId, slotIndex, src)
 	if not ok then
 		warn("[Hotbar] Bind failed", player.Name, err)
+	else
+		saveProfile(player.UserId)
 	end
 	push(player)
 end)
@@ -195,11 +205,16 @@ DiscardItem.OnServerEvent:Connect(function(player: Player, uuid: string)
 	if slot then
 		LoadoutService.Unequip(userId, slot)
 	end
+	local inst = InventoryService.Find(userId, uuid)
+	if inst and inst.defId == "weapon_frame" then
+		InventoryService.ReleaseFrameParts(userId, uuid)
+	end
 	if InventoryService.RemoveItem(userId, uuid) then
 		HotbarService.Prune(userId)
 		if _G.RefreshWeaponVisuals then
 			_G.RefreshWeaponVisuals(player)
 		end
+		saveProfile(userId)
 	end
 	push(player)
 end)
@@ -214,6 +229,9 @@ InstallWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: stri
 	local ok, err = WeaponAssemblyService.InstallPart(player.UserId, frameUuid, partUuid, slot)
 	if not ok then
 		warn("[Assembly] Install failed", player.Name, err)
+	end
+	if ok then
+		saveProfile(player.UserId)
 	end
 	HotbarService.Prune(player.UserId)
 	if _G.RefreshWeaponVisuals then
@@ -230,6 +248,7 @@ RemoveWeaponPart.OnServerEvent:Connect(function(player: Player, frameUuid: strin
 		return
 	end
 	WeaponAssemblyService.RemovePart(player.UserId, frameUuid, slot)
+	saveProfile(player.UserId)
 	HotbarService.Prune(player.UserId)
 	if _G.RefreshWeaponVisuals then
 		_G.RefreshWeaponVisuals(player)
@@ -301,6 +320,7 @@ ForgeWeapon.OnServerEvent:Connect(function(player: Player, handleUuid: any, blad
 	if _G.RefreshWeaponVisuals then
 		_G.RefreshWeaponVisuals(player)
 	end
+	saveProfile(player.UserId)
 	push(player)
 end)
 

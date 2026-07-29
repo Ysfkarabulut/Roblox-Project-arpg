@@ -15,7 +15,7 @@ local StatService = require(script.Parent.StatService)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 
-local PassiveService = require(script.Parent.PassiveService)
+local ComboTracker = require(script.Parent.ComboTracker)
 local NameplateService = require(script.Parent.NameplateService)
 local CombatPressureService = require(script.Parent.CombatPressureService)
 local BossEntityService = require(script.Parent.Parent.Boss.BossEntityService)
@@ -40,15 +40,16 @@ export type HitReport = {
 }
 
 local function victimDamageTakenMult(entity: Instance): number
+	local mult = 1
 	local f = StatusService.Get(entity, "Fortify")
 	if f and f.params and typeof(f.params.damageTakenMult) == "number" then
-		return f.params.damageTakenMult
+		mult *= f.params.damageTakenMult
 	end
 	local slow = StatusService.Get(entity, "Slow")
 	if slow and slow.params and typeof(slow.params.damageTakenMult) == "number" then
-		return slow.params.damageTakenMult
+		mult *= slow.params.damageTakenMult
 	end
-	return 1
+	return mult
 end
 
 function DamageService.ResolveEntity(target: Instance?): (Instance?, string)
@@ -124,6 +125,24 @@ function DamageService.GetDefence(entity: Instance): number
 	return StatService.Derived(plr.UserId).totalDefence
 end
 
+function DamageService.GetResist(entity: Instance): number
+	local plr = Players:GetPlayerFromCharacter(entity)
+	if not plr then
+		if entity:GetAttribute("IsPvpOpponent") then
+			local PvpEncounterConfig = require(game.ReplicatedStorage.Shared.Config.PvpEncounterConfig)
+			return math.floor((PvpEncounterConfig.opponentDefence or 0) * 0.25 + 0.5)
+		end
+		if entity:GetAttribute("IsBoss") or (entity:IsA("Model") and entity.Name == "Boss_TheEye") then
+			return math.floor(BossEntityService.GetDefence() * 0.25 + 0.5)
+		end
+		if entity:GetAttribute("IsBossAdd") then
+			return 5
+		end
+		return CombatConfig.DummyResist
+	end
+	return StatService.Derived(plr.UserId).totalResist
+end
+
 function DamageService.ApplyHp(entity: Instance, kind: string, amount: number, victimUserId: number?): (number, boolean)
 	amount = math.max(0, math.floor(amount * victimDamageTakenMult(entity) + 0.5))
 	if victimUserId and kind == "Player" then
@@ -195,6 +214,7 @@ export type DirectAttackCtx = {
 	applyOnHitStatus: { id: string, duration: number, dps: number?, params: { [string]: any }? }?,
 	statusApplyOpts: { helmOverride: boolean?, gemElement: string? }?,
 	pressureGroupId: string?,
+	ignoreGuard: boolean?,
 }
 
 function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
@@ -248,6 +268,7 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 		atkElement = ctx.atkElement,
 		defChestElement = DamageService.GetChestElement(entity),
 		defence = DamageService.GetDefence(entity),
+		resist = DamageService.GetResist(entity),
 		defenceShredPct = ctx.defenceShredPct or 0,
 		critChancePct = critChance,
 		critDamagePct = critDmg,
@@ -293,7 +314,7 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 	end
 
 	local blocked, chip, _, _broke = false, 0, 0, false
-	if kind == "Player" and not isDotOrBurst then
+	if kind == "Player" and not isDotOrBurst and not ctx.ignoreGuard then
 		local defPlr = Players:GetPlayerFromCharacter(entity)
 		if defPlr then
 			blocked, chip = GuardService.TryBlock(defPlr.UserId, entity, attackerPos, afterDr, ctx.axeGuardMult)
@@ -304,6 +325,7 @@ function DamageService.DealDirect(ctx: DirectAttackCtx): HitReport
 	local onHit = false
 	local vUid = resolveVictimUserId(entity, kind)
 	if blocked then
+		ComboTracker.CommitBlock(ctx.attacker.UserId)
 		dealt, dead = DamageService.ApplyHp(entity, kind, chip, vUid)
 	else
 		dealt, dead = DamageService.ApplyHp(entity, kind, afterDr, vUid)
@@ -370,14 +392,14 @@ function DamageService.DealBurst(entity: Instance, amount: number, _reactionId: 
 	if kind == "None" then
 		return
 	end
-	DamageService.ApplyHp(entity, kind, amount)
+	DamageService.ApplyHp(entity, kind, amount, resolveVictimUserId(entity, kind))
 end
 
 function DamageService.TickDoTs()
 	StatusService.TickDoTs(function(entity, dps, statusId, sourceUserId)
 		local _, kind = DamageService.ResolveEntity(entity)
 		if kind ~= "None" then
-			DamageService.ApplyHp(entity, kind, dps)
+			DamageService.ApplyHp(entity, kind, dps, resolveVictimUserId(entity, kind))
 		end
 	end)
 	local HealService = require(script.Parent.HealService)

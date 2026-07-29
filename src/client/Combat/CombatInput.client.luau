@@ -36,7 +36,9 @@ local InventoryUpdated = invRemotes:WaitForChild("InventoryUpdated") :: RemoteEv
 local GetSnapshot = invRemotes:WaitForChild("GetSnapshot") :: RemoteFunction
 
 local hotbar: { [number]: string? } = {}
+local hotbarSource: { [number]: string? } = {}
 local cdUntil: { [string]: number } = {}
+local actionLockUntil = 0
 local shiftLock = true
 -- During dodge, face dash direction instead of camera (one forward roll anim covers all dirs).
 local dodgeFaceUntil = 0
@@ -95,9 +97,19 @@ local aimLabel = UiTheme.Label({
 })
 
 local function refreshHotbar(snap: any)
-	if typeof(snap) == "table" and typeof(snap.hotbar) == "table" then
+	if typeof(snap) ~= "table" then
+		return
+	end
+	if typeof(snap.hotbar) == "table" then
 		hotbar = snap.hotbar
 	end
+	if typeof(snap.hotbarSource) == "table" then
+		hotbarSource = snap.hotbarSource
+	end
+end
+
+local function isActionLocked(): boolean
+	return os.clock() < actionLockUntil
 end
 
 task.defer(function()
@@ -192,6 +204,9 @@ local function aimPayload(): (Vector3, Vector3)
 end
 
 local function tryCastSlot(slotIndex: number)
+	if isActionLocked() then
+		return
+	end
 	local abilityId = hotbar[slotIndex]
 	if not abilityId then
 		return
@@ -203,11 +218,11 @@ local function tryCastSlot(slotIndex: number)
 		return
 	end
 	local look, aim = aimPayload()
-	CastAbility:FireServer(abilityId, look, aim)
+	CastAbility:FireServer(abilityId, look, aim, hotbarSource[slotIndex])
 end
 
 local function doLightAttack()
-	if defending or isReloading() then
+	if defending or isReloading() or isActionLocked() then
 		return
 	end
 	local look, aim = aimPayload()
@@ -228,6 +243,9 @@ local function setDodgeRolling(active: boolean)
 end
 
 local function doDodge()
+	if isActionLocked() then
+		return
+	end
 	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local dir = if hum then hum.MoveDirection else Vector3.zero
 	if dir.Magnitude < 0.1 then
@@ -315,6 +333,9 @@ CombatFx.OnClientEvent:Connect(function(userId: number, fx: any, _hits: any)
 			end
 		else
 			CombatAnim.Play(animKey, fx.family, fx.comboStep, fx)
+		end
+		if typeof(fx.recoverySec) == "number" and fx.recoverySec > 0 then
+			actionLockUntil = math.max(actionLockUntil, os.clock() + fx.recoverySec)
 		end
 		if typeof(fx.recoverySec) == "number" and fx.recoverySec > 0 and player.Character then
 			local char = player.Character

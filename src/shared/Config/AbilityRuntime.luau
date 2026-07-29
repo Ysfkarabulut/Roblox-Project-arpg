@@ -30,6 +30,7 @@ export type AbilitySpec = {
 	selfBuff: string?, -- Fortify, Frenzy, HelmPulse
 	selfBuffDuration: number?,
 	selfBuffParams: { [string]: number }?,
+	burstMoveSpeedMult: number?, -- mx_*_burst self move speed window
 	healBase: number?, -- instant self heal (Buff Potency scales amount)
 	hotHps: number?, -- heal per second
 	hotDuration: number?, -- HoT base duration (Buff Potency scales)
@@ -455,6 +456,42 @@ local SPECS: { [string]: AbilitySpec } = {
 		hotHps = 7,
 		hotDuration = 4,
 	},
+	fire_jar_focusactive = {
+		id = "fire_jar_focusactive",
+		damagePct = 65,
+		range = 18,
+		radius = 7,
+		shape = "GroundSphere",
+		cooldownSec = 12,
+		anim = "Cast",
+		vfx = "Burst",
+		statusId = "Ignite",
+		statusDuration = 3,
+	},
+	flash_orb_focusactive = {
+		id = "flash_orb_focusactive",
+		damagePct = 85,
+		range = 26,
+		radius = 4,
+		shape = "Single",
+		cooldownSec = 10,
+		anim = "Cast",
+		vfx = "Bolt",
+		statusId = "Shock",
+		statusDuration = 0.5,
+	},
+	binding_totem_focusactive = {
+		id = "binding_totem_focusactive",
+		damagePct = 0,
+		range = 16,
+		radius = 6,
+		shape = "GroundSphere",
+		cooldownSec = 15,
+		anim = "Cast",
+		vfx = "Burst",
+		statusId = "Root",
+		statusDuration = 2.2,
+	},
 }
 
 local ARMOR_ELEMENT_ACTIVES: { [string]: boolean } = {
@@ -478,7 +515,7 @@ local function defaultFromElement(abilityId: string, element: string?, cooldownS
 		shape = if isRanged then "Single" else "Single",
 		statusId = sig and sig.id or nil,
 		statusDuration = if el == "Lightning" then 0.5 elseif el == "Steel" then 8 elseif el == "Poison" then 5 elseif el == "Water" then 5 elseif el == "Wind" then 3 elseif el == "Rock" then 2 elseif el == "Fire" then 3 else nil,
-		statusDps = if el == "Steel" then 4 elseif el == "Poison" then 3 else nil,
+		statusDps = if el == "Steel" then 4 elseif el == "Poison" then 3 elseif el == "Fire" then 7 else nil,
 		cooldownSec = cooldownSec or 10,
 		anim = if isRanged then "Cast" else "Melee",
 		vfx = if isRanged then "Bolt" else "Slash",
@@ -540,7 +577,17 @@ function AbilityRuntime.Get(abilityId: string, fallbackElement: string?, fallbac
 			end
 		end
 		local base = defaultFromElement(abilityId, elName, fallbackCd)
-		if parts[3] == "burst" or abilityId:find("util") then
+		if parts[3] == "burst" then
+			base.damagePct = 0
+			base.shape = "Self"
+			base.anim = "Buff"
+			base.vfx = "Aura"
+			base.statusId = nil
+			base.selfBuff = "Frenzy"
+			base.selfBuffDuration = 3
+			base.selfBuffParams = { damageDealtMult = 1.25 }
+			base.burstMoveSpeedMult = 1.2
+		elseif parts[3] == "util" then
 			base.damagePct = 0
 			base.shape = "Self"
 			base.anim = "Buff"

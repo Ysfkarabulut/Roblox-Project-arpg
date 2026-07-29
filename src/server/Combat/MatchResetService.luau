@@ -14,6 +14,7 @@ local DodgeService = require(script.Parent.DodgeService)
 local ParryService = require(script.Parent.ParryService)
 local AbilityService = require(script.Parent.AbilityService)
 local LightAttackService = require(script.Parent.LightAttackService)
+local CombatPressureService = require(script.Parent.CombatPressureService)
 
 local MatchResetService = {}
 
@@ -27,6 +28,7 @@ function MatchResetService.ResetPlayer(plr: Player)
 	ParryService.Clear(userId)
 	AbilityService.Clear(userId)
 	LightAttackService.Clear(userId)
+	CombatPressureService.ResetForPlayer(userId)
 
 	if not char then
 		return

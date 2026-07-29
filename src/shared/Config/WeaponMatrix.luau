@@ -1,6 +1,7 @@
 --[[
 	Common roster: every weapon family × every element (1 each).
-	Handcrafted / boss defs in ItemDefs override matching ids.
+	REFERENCE ONLY — not merged into ItemDefs (modular blades replace w_* matrix).
+	Legacy mx_* ability IDs still resolve via AbilityRuntime fallbacks.
 ]]
 
 local ElementData = require(script.Parent.ElementData)

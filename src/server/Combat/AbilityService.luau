@@ -8,6 +8,7 @@ local Workspace = game:GetService("Workspace")
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local AbilityRuntime = require(game.ReplicatedStorage.Shared.Config.AbilityRuntime)
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
+local HotbarConfig = require(game.ReplicatedStorage.Shared.Config.HotbarConfig)
 
 local HotbarService = require(script.Parent.Parent.Hotbar.HotbarService)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
@@ -25,10 +26,13 @@ local PvpMatchService = require(script.Parent.Parent.Pvp.PvpMatchService)
 local PvpTeamService = require(script.Parent.Parent.Pvp.PvpTeamService)
 local CrossbowReloadService = require(script.Parent.CrossbowReloadService)
 local CombatPressureService = require(script.Parent.CombatPressureService)
+local ExoticPerkDefs = require(game.ReplicatedStorage.Shared.Config.ExoticPerkDefs)
+local GuardService = require(script.Parent.GuardService)
 
 local AbilityService = {}
 
 local cooldowns: { [number]: { [string]: number } } = {} -- userId → abilityId → readyAt
+local lastSmokeCast: { [number]: number } = {}
 
 export type CastResult = {
 	ok: boolean,
@@ -43,6 +47,49 @@ local function readyMap(userId: number)
 		cooldowns[userId] = {}
 	end
 	return cooldowns[userId]
+end
+
+local function abilityFromSourceUuid(userId: number, sourceUuid: string, abilityId: string): (any?, any?, string?)
+	local inst = InventoryService.Find(userId, sourceUuid)
+	if not inst then
+		return nil, nil, nil
+	end
+	if inst.defId == "weapon_frame" then
+		local resolved = WeaponAssemblyService.ToResolved(userId, sourceUuid)
+		if resolved and resolved.complete and resolved.abilities then
+			for _, ab in resolved.abilities do
+				if ab.id == abilityId and ab.slotType == "Active" then
+					return ab, WeaponResolver.AsItemDef(resolved), resolved.element
+				end
+			end
+		end
+	elseif inst then
+		local def = ItemDefs.Get(inst.defId)
+		if def and def.abilities then
+			for _, ab in def.abilities do
+				if ab.id == abilityId and ab.slotType == "Active" then
+					return ab, def, def.element
+				end
+			end
+		end
+	end
+	return nil, nil, nil
+end
+
+local function findAbilityForCast(userId: number, abilityId: string): (any?, any?, string?)
+	local candidates: { string } = {}
+	for _, a in HotbarService.GetAvailableActives(userId) do
+		if a.abilityId == abilityId then
+			table.insert(candidates, a.sourceUuid)
+		end
+	end
+	if #candidates == 1 then
+		return abilityFromSourceUuid(userId, candidates[1], abilityId)
+	end
+	if #candidates > 1 then
+		return abilityFromSourceUuid(userId, candidates[1], abilityId)
+	end
+	return findAbilityOnLoadout(userId, abilityId)
 end
 
 local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, any?, string?)
@@ -63,11 +110,22 @@ local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, a
 		local uuid = loadout[slotId]
 		if uuid then
 			local inst = InventoryService.Find(userId, uuid)
-			local def = inst and ItemDefs.Get(inst.defId)
-			if def and def.abilities then
-				for _, ab in def.abilities do
-					if ab.id == abilityId and ab.slotType == "Active" then
-						return ab, def, def.element
+			if inst and inst.defId == "weapon_frame" then
+				local resolved = WeaponAssemblyService.ToResolved(userId, uuid)
+				if resolved and resolved.complete and resolved.abilities then
+					for _, ab in resolved.abilities do
+						if ab.id == abilityId and ab.slotType == "Active" then
+							return ab, WeaponResolver.AsItemDef(resolved), resolved.element
+						end
+					end
+				end
+			elseif inst then
+				local def = ItemDefs.Get(inst.defId)
+				if def and def.abilities then
+					for _, ab in def.abilities do
+						if ab.id == abilityId and ab.slotType == "Active" then
+							return ab, def, def.element
+						end
 					end
 				end
 			end
@@ -76,10 +134,10 @@ local function findAbilityOnLoadout(userId: number, abilityId: string): (any?, a
 	return nil, nil, nil
 end
 
-local function isBound(userId: number, abilityId: string): boolean
-	local binds = HotbarService.GetBinds(userId)
-	for _, id in binds do
-		if id == abilityId then
+local function isBound(userId: number, abilityId: string, sourceUuid: string?): boolean
+	for i = 1, HotbarConfig.SlotCount do
+		local id, src = HotbarService.GetBindForSlot(userId, i)
+		if id == abilityId and (not sourceUuid or src == sourceUuid) then
 			return true
 		end
 	end
@@ -336,12 +394,28 @@ local function collectAllyTargets(caster: Player, spec, look: Vector3, aimPos: V
 	return candidates
 end
 
-local function applyAllySupport(casterUserId: number, target: Instance, spec: any): { string }
+local function applyAllySupport(casterUserId: number, target: Instance, spec: any, abilityId: string?): { string }
 	local applied: { string } = {}
 	if spec.healBase and spec.healBase > 0 then
-		local healed = HealService.Apply(target, StatService.ScaleHeal(casterUserId, spec.healBase))
+		local scaled = StatService.ScaleHeal(casterUserId, spec.healBase)
+		local healed = HealService.Apply(target, scaled)
 		if healed > 0 then
 			table.insert(applied, `Heal+{healed}`)
+		end
+		if abilityId == "lifewave_armoractive" then
+			local loadout = LoadoutService.Get(casterUserId)
+			local headUuid = loadout.head
+			local headInst = headUuid and InventoryService.Find(casterUserId, headUuid)
+			local crownPerk = headInst and ExoticPerkDefs.GetArmorPerk(headInst.defId)
+			if crownPerk and crownPerk.lifewaveOverhealHot and scaled > healed then
+				local overheal = scaled - healed
+				local hotDur = StatService.ScaleBuffDuration(casterUserId, 3)
+				StatusService.Apply(target, "Regen", hotDur, {
+					sourceUserId = casterUserId,
+					hps = overheal / hotDur,
+				})
+				table.insert(applied, "OverhealHoT")
+			end
 		end
 	end
 	if spec.hotHps and spec.hotHps > 0 and spec.hotDuration and spec.hotDuration > 0 then
@@ -403,6 +477,14 @@ local function applySelfAbility(player: Player, userId: number, element: string,
 			sourceUserId = userId,
 			params = spec.selfBuffParams,
 		})
+		if spec.burstMoveSpeedMult and spec.burstMoveSpeedMult > 0 then
+			character:SetAttribute("MoveSpeedMult", spec.burstMoveSpeedMult)
+			task.delay(duration, function()
+				if character.Parent and character:GetAttribute("MoveSpeedMult") == spec.burstMoveSpeedMult then
+					character:SetAttribute("MoveSpeedMult", nil)
+				end
+			end)
+		end
 		table.insert(applied, "Frenzy")
 	elseif spec.selfBuff == "HelmPulse" then
 		local params = table.clone(spec.selfBuffParams or {})
@@ -630,24 +712,29 @@ local function isCrossbowMain(userId: number): boolean
 	return resolved and resolved.complete and resolved.family == "Crossbow"
 end
 
-local function isOffHandAbilitySource(userId: number, sourceDefId: string?): boolean
-	if not sourceDefId then
-		return false
-	end
+local function isOffHandAbilitySource(userId: number, abilityId: string, sourceUuid: string?): boolean
 	local loadout = LoadoutService.Get(userId)
 	if not loadout.off then
 		return false
 	end
-	local inst = InventoryService.Find(userId, loadout.off)
-	if not inst or inst.defId ~= sourceDefId then
-		return false
+	if sourceUuid then
+		return sourceUuid == loadout.off
 	end
-	local offDef = ItemDefs.Get(inst.defId)
-	local weaponKinds = { Weapon1H = true, Wand = true, Scepter = true }
-	return offDef ~= nil and weaponKinds[offDef.kind] == true
+	for _, a in HotbarService.GetAvailableActives(userId) do
+		if a.abilityId == abilityId and a.sourceUuid == loadout.off then
+			return true
+		end
+	end
+	return false
 end
 
-function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vector3?, aimPosition: Vector3?): CastResult
+function AbilityService.Cast(
+	player: Player,
+	abilityId: string,
+	lookVector: Vector3?,
+	aimPosition: Vector3?,
+	sourceUuid: string?
+): CastResult
 	if typeof(abilityId) ~= "string" then
 		return { ok = false, reason = "BadId" }
 	end
@@ -664,10 +751,16 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 	if not player.Character or not CombatPressureService.CanAttackEntity(player.Character) then
 		return { ok = false, reason = "Stunned" }
 	end
-	if not isBound(userId, abilityId) then
+	if not isBound(userId, abilityId, sourceUuid) then
 		return { ok = false, reason = "NotBound" }
 	end
-	local abDef, itemDef, frameElement = findAbilityOnLoadout(userId, abilityId)
+	local abDef, itemDef, frameElement
+	if typeof(sourceUuid) == "string" then
+		abDef, itemDef, frameElement = abilityFromSourceUuid(userId, sourceUuid, abilityId)
+	end
+	if not abDef then
+		abDef, itemDef, frameElement = findAbilityForCast(userId, abilityId)
+	end
 	if not abDef then
 		return { ok = false, reason = "NotEquipped" }
 	end
@@ -687,8 +780,10 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 	if itemDef and itemDef.baseDamage then
 		base = itemDef.baseDamage
 	end
-	local offMult = if isOffHandAbilitySource(userId, itemDef and itemDef.id) then CombatConfig.OffHandAbilityMult else 1
-	local scale = scalingFor(userId, mainDef or itemDef)
+	local scaleSource = itemDef or mainDef
+	local offMult = if isOffHandAbilitySource(userId, abilityId, sourceUuid) then CombatConfig.OffHandAbilityMult else 1
+	local scale = scalingFor(userId, scaleSource)
+	local bladePerk = itemDef and ExoticPerkDefs.GetBladePerk(itemDef.bladeDefId)
 	local look = if typeof(lookVector) == "Vector3" then lookVector else Vector3.new(0, 0, -1)
 	local aim = if typeof(aimPosition) == "Vector3" then aimPosition else nil
 	local pressureGroupId = `{userId}_ab_{math.floor(t * 1000)}`
@@ -708,6 +803,10 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 		map[abilityId] = t + cd
 		commitCastPressure()
 		local statuses = applySelfAbility(player, userId, element, spec)
+		if abilityId == "burst_weaponactive" and bladePerk and bladePerk.burstRefreshesPierce then
+			CrossbowReloadService.Clear(userId)
+			map["pierce_bolt_weaponactive"] = t
+		end
 		table.insert(hits, { targetKind = "Self", damage = 0, statuses = statuses })
 	elseif isAllySupportShape(spec.shape) then
 		local allyTargets = collectAllyTargets(player, spec, look, aim)
@@ -720,13 +819,23 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 		map[abilityId] = t + cd
 		commitCastPressure()
 		for _, target in allyTargets do
-			local statuses = applyAllySupport(userId, target, spec)
+			local statuses = applyAllySupport(userId, target, spec, abilityId)
+			if abilityId == "renew_weaponactive" and bladePerk and bladePerk.renewFortifySec then
+				applyFortify(userId, player, bladePerk.renewFortifySec, { damageTakenMult = 0.9 })
+				table.insert(statuses, "Fortify")
+			end
 			local allyPlr = Players:GetPlayerFromCharacter(target)
 			local kind = if allyPlr then "Ally" else "AllyNpc"
 			table.insert(hits, { targetKind = kind, damage = 0, statuses = statuses })
 		end
 	elseif spec.shape == "Grapple" then
 		map[abilityId] = t + cd
+		if abilityId == "grapple_hook_focusactive" and itemDef and ExoticPerkDefs.GetFocusPerk(itemDef.id) then
+			local focusPerk = ExoticPerkDefs.GetFocusPerk(itemDef.id)
+			if focusPerk and focusPerk.smokeGrappleCdReset and t - (lastSmokeCast[userId] or 0) <= 4 then
+				map[abilityId] = t
+			end
+		end
 		if player.Character then
 			CombatPressureService.ApplyHyperArmor(player.Character, 0.4, userId)
 		end
@@ -761,6 +870,9 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 		end
 	else
 		map[abilityId] = t + cd
+		if abilityId == "smoke_bomb_focusactive" then
+			lastSmokeCast[userId] = t
+		end
 		commitCastPressure()
 		if spec.chargeStuds and spec.chargeStuds > 0 then
 			applyCharge(player, look, spec.chargeStuds)
@@ -770,6 +882,7 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 
 		-- multi-hit volley (same target)
 		local hitMult = spec.hitCount or 1
+		local slamFortifyApplied = false
 		for _, target in targets do
 			local statusesApplied = {}
 			local totalDmg = 0
@@ -793,10 +906,51 @@ function AbilityService.Cast(player: Player, abilityId: string, lookVector: Vect
 						kind = "Ability",
 						applyOnHitStatus = onHit,
 						pressureGroupId = pressureGroupId,
+						ignoreGuard = abilityId == "pierce_bolt_weaponactive" and bladePerk and bladePerk.pierceIgnoresGuard,
 					})
 					totalDmg += report.dealt
+					if report.perfectParry then
+						break
+					end
 					if onHit and report.onHitApplied then
 						table.insert(statusesApplied, spec.statusId)
+						if bladePerk and bladePerk.statusDoubleOnCrit and report.crit then
+							local scaled = PassiveService.FinalizeLaOnHitStatus(userId, onHit, element)
+							CombatPressureService.TryApplyStatus(target, scaled.id, scaled.duration, {
+								sourceUserId = userId,
+								dps = scaled.dps,
+								params = scaled.params,
+							})
+							table.insert(statusesApplied, spec.statusId)
+						end
+					end
+					if abilityId == "cone_weaponactive" and bladePerk and bladePerk.coneGuardBreak and report.dealt > 0 then
+						local defPlr = Players:GetPlayerFromCharacter(target)
+						if defPlr and target:IsA("Model") then
+							GuardService.ForceBreak(defPlr.UserId, target)
+						end
+					end
+					if abilityId == "charger_armoractive" and report.dealt > 0 then
+						local loadout = LoadoutService.Get(userId)
+						local feetInst = loadout.feets and InventoryService.Find(userId, loadout.feets)
+						local bootPerk = feetInst and ExoticPerkDefs.GetArmorPerk(feetInst.defId)
+						if bootPerk and bootPerk.chargerRootOnHit and target:IsA("Model") then
+							CombatPressureService.TryApplyStatus(target, "Root", 1.2, {
+								sourceUserId = userId,
+							})
+							table.insert(statusesApplied, "Root")
+						end
+					end
+					if
+						abilityId == "slam_r_weaponactive"
+						and bladePerk
+						and bladePerk.slamFortifySec
+						and report.dealt > 0
+						and not slamFortifyApplied
+					then
+						applyFortify(userId, player, bladePerk.slamFortifySec, { damageTakenMult = 0.9 })
+						slamFortifyApplied = true
+						table.insert(statusesApplied, "Fortify")
 					end
 				elseif spec.statusId then
 					local raw = {

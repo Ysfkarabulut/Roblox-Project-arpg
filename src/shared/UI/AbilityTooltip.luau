@@ -7,6 +7,7 @@ local WeaponActiveDefs = require(script.Parent.Parent.Config.WeaponActiveDefs)
 local PassiveDefs = require(script.Parent.Parent.Config.PassiveDefs)
 local ArmorAbilityDefs = require(script.Parent.Parent.Config.ArmorAbilityDefs)
 local FocusAbilityDefs = require(script.Parent.Parent.Config.FocusAbilityDefs)
+local InspectHints = require(script.Parent.InspectHints)
 
 local AbilityTooltip = {}
 
@@ -101,6 +102,18 @@ function AbilityTooltip.Build(abilityId: string, flavor: Flavor?): (string, stri
 		table.insert(lines, "Passive — always active while equipped")
 	elseif def and ArmorAbilityDefs.Get(abilityId) then
 		table.insert(lines, "Armor active")
+	end
+
+	local spec = AbilityRuntime.Get(abilityId, "Neutral", flavor.cooldownSec or (def and (def :: any).defaultCooldownSec))
+	if spec.statusId then
+		local rx = InspectHints.ReactionsForStatus(spec.statusId)
+		if #rx > 0 then
+			table.insert(lines, "")
+			table.insert(lines, "— Synergy hint —")
+			for _, line in rx do
+				table.insert(lines, line)
+			end
+		end
 	end
 
 	if #lines == 0 then

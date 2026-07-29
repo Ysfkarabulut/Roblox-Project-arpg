@@ -88,6 +88,7 @@ local function buildInventorySnapshot(userId: number)
 		items = InventoryService.GetItems(userId),
 		loadout = loadout,
 		hotbar = HotbarService.GetBinds(userId),
+		hotbarSource = HotbarService.GetBindSources(userId),
 		actives = HotbarService.GetAvailableActives(userId),
 		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),
@@ -168,24 +169,21 @@ GrantMvpLoadout.OnServerEvent:Connect(function(player: Player)
 		return
 	end
 	local ids = {
-		"h_1h_sword",
-		"b_sword_st",
-		"p_balanced",
-		"gem_steel",
 		"a_head_steel",
 		"a_chest_steel",
 		"a_hands_steel",
 		"a_feets_steel",
 		"a_chest_bastion",
 		"o_focus_fishnet",
-		"o_focus_vampire",
-		"o_shield_t1",
+		"o_buckler",
 	}
 	for _, defId in ids do
 		InventoryService.AddItem(player.UserId, defId)
 	end
+	InventoryService.CreateAssembledFrame(player.UserId, "h_1h_sword", "b_sword_st", "p_balanced", "gem_steel")
+	InventoryService.CreateAssembledFrame(player.UserId, "h_1h_sword", "b_dagger_st", "p_balanced", "gem_poison")
 	pushInventory(player)
-	notify(player, true, "MVP test loadout granted (steel + sword + focus + role armor)")
+	notify(player, true, "MVP loadout: steel sword + poison dagger frames (dual wield), armor, focus")
 end)
 
 SetStats.OnServerEvent:Connect(function(player: Player, patch: any)

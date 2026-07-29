@@ -9,7 +9,6 @@ local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local PassiveService = require(script.Parent.PassiveService)
-local SynergyService = require(game.ReplicatedStorage.Shared.Combat.SynergyService)
 
 local PURE_PERK_LINES = {
 	Fire = "Guaranteed Ignite · +15% duration",
@@ -262,10 +261,7 @@ function StatService.Derived(userId: number): {
 	local gear = StatService.GearStats(userId)
 	local passive = PassiveService.GetBonus(userId)
 	local loadout = LoadoutService.Get(userId)
-	local resolved = LoadoutService.GetResolvedMain(userId)
-	local synergy = SynergyService.ResolveLoadout(userId, loadout, resolved, function(uuid)
-		return InventoryService.Find(userId, uuid)
-	end)
+	local synergy = PassiveService.GetSynergy(userId)
 	local defVit = s.VIT * CombatConfig.KVitDef
 	local resVit = s.VIT * CombatConfig.KVitRes
 	local baseDef = defVit + gear.defence

@@ -129,6 +129,19 @@ function GuardService.TryBlock(
 	return true, chip, stamCost, broke
 end
 
+function GuardService.ForceBreak(defenderUserId: number, defenderChar: Model)
+	if not GuardService.IsGuarding(defenderUserId) then
+		return
+	end
+	local plr = Players:GetPlayerByUserId(defenderUserId)
+	if plr then
+		GuardService.SetGuarding(plr, false)
+	end
+	StatusService.Apply(defenderChar, "Stun", CombatConfig.GuardBreakStunSec, {
+		silentBatch = true,
+	})
+end
+
 function GuardService.Clear(userId: number)
 	guarding[userId] = false
 end

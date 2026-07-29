@@ -16,15 +16,17 @@ local DropRates = {
 }
 
 local TierWeights = {
-	CommonPart = 55,
-	RareBlade = 30,
+	CommonPart = 52,
+	RareBlade = 28,
 	RareArmor = 10,
+	Exotic = 5,
 	BonusGem = 5,
 }
 
 local RareBoxWeights = {
-	RareBlade = 70,
+	RareBlade = 62,
 	RareArmor = 25,
+	Exotic = 8,
 	BonusGem = 5,
 }
 
@@ -37,11 +39,13 @@ local pools: {
 	CommonPart: { string },
 	RareBlade: { string },
 	RareArmor: { string },
+	Exotic: { string },
 	BonusGem: { string },
 } = {
 	CommonPart = {},
 	RareBlade = {},
 	RareArmor = {},
+	Exotic = {},
 	BonusGem = {},
 }
 
@@ -66,8 +70,14 @@ local function buildPools()
 		end
 		if isCommonPart(def) then
 			table.insert(pools.CommonPart, id)
-		elseif def.kind == "WeaponBlade" and def.rarity == "Rare" then
-			table.insert(pools.RareBlade, id)
+		elseif def.kind == "WeaponBlade" and (def.rarity == "Rare" or def.rarity == "Exotic") then
+			if def.rarity == "Exotic" then
+				table.insert(pools.Exotic, id)
+			else
+				table.insert(pools.RareBlade, id)
+			end
+		elseif def.rarity == "Exotic" and (def.kind == "Head" or def.kind == "Chest" or def.kind == "Hands" or def.kind == "Feets" or def.kind == "Focus") then
+			table.insert(pools.Exotic, id)
 		elseif def.rarity == "Rare" and (def.kind == "Head" or def.kind == "Chest" or def.kind == "Hands" or def.kind == "Feets" or def.kind == "Focus") then
 			table.insert(pools.RareArmor, id)
 		end
@@ -189,7 +199,11 @@ function LootTables.RollLootBox(poolId: string): string?
 		return LootTables.RollGacha("PvE")
 	elseif poolId == "rare" then
 		local tier = rollWeighted(RareBoxWeights)
-		return pickFrom(pools[tier]) or LootTables.RollGacha("PvE")
+		if tier == "Exotic" then
+			return pickFrom(pools.Exotic) or pickFrom(pools.RareBlade) or LootTables.RollGacha("PvE")
+		end
+		local list = pools[tier]
+		return pickFrom(list) or LootTables.RollGacha("PvE")
 	elseif poolId == "boss_eye" then
 		return LootTables.RollBossExclusive("eye")
 	end

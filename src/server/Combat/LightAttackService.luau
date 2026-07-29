@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 
+local LoadoutSlots = require(game.ReplicatedStorage.Shared.Config.LoadoutSlots)
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local WeaponFamilyConfig = require(game.ReplicatedStorage.Shared.Config.WeaponFamilyConfig)
@@ -26,6 +27,7 @@ local CrossbowReloadService = require(script.Parent.CrossbowReloadService)
 local GuardService = require(script.Parent.GuardService)
 local ParryService = require(script.Parent.ParryService)
 local CombatPressureService = require(script.Parent.CombatPressureService)
+local ExoticPerkDefs = require(game.ReplicatedStorage.Shared.Config.ExoticPerkDefs)
 
 local LightAttackService = {}
 
@@ -62,7 +64,14 @@ local function maceShredPct(def: any): number
 	return if def.kind == "Weapon2H" then CombatConfig.MaceShred2H else CombatConfig.MaceShred1H
 end
 
-local function collectTargets(caster: Player, family, look: Vector3, aimPos: Vector3?, comboStep: number?): { Instance }
+local function collectTargets(
+	caster: Player,
+	family,
+	look: Vector3,
+	aimPos: Vector3?,
+	comboStep: number?,
+	laL3ExtraTargets: number?
+): { Instance }
 	local root = caster.Character and caster.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
 		return {}
@@ -158,7 +167,15 @@ local function collectTargets(caster: Player, family, look: Vector3, aimPos: Vec
 			return (ra - ref).Magnitude < (rb - ref).Magnitude
 		end)
 		if #targets > 0 then
-			return { targets[1] }
+			local maxTargets = 1
+			if comboStep == 3 and laL3ExtraTargets and laL3ExtraTargets > 0 then
+				maxTargets += laL3ExtraTargets
+			end
+			local out: { Instance } = {}
+			for i = 1, math.min(maxTargets, #targets) do
+				table.insert(out, targets[i])
+			end
+			return out
 		end
 	else
 		-- max 3 for scepter
@@ -232,7 +249,9 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 	local recovery = DamagePipeline.HitRecovery(def.asTier, stats.DEX, step, asMult)
 	if step == 3 then
 		recovery += CombatPressureService.L3EndlagBonus()
-		CombatPressureService.ApplyHyperArmor(player.Character, CombatConfig.HyperArmorL3Sec, userId)
+		local exoticL3 = ExoticPerkDefs.GetBladePerk(resolved.bladeDefId)
+		local hyperSec = CombatConfig.HyperArmorL3Sec + (exoticL3 and exoticL3.laL3HyperArmorBonusSec or 0)
+		CombatPressureService.ApplyHyperArmor(player.Character, hyperSec, userId)
 	end
 	CombatPressureService.LockActions(userId, recovery)
 
@@ -240,7 +259,8 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 
 	local look = if typeof(lookVector) == "Vector3" then lookVector else Vector3.new(0, 0, -1)
 	local aim = if typeof(aimPosition) == "Vector3" then aimPosition else nil
-	local targets = collectTargets(player, family, look, aim, step)
+	local exoticPeek = ExoticPerkDefs.GetBladePerk(resolved.bladeDefId)
+	local targets = collectTargets(player, family, look, aim, step, exoticPeek and exoticPeek.laL3ExtraTargets)
 
 	if #targets == 0 then
 		-- Whiff — no combo advance
@@ -285,7 +305,7 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 		if def.family == "Dagger" and target:IsA("Model") and isBackstab(player, target) then
 			backstab = CombatConfig.KBackstab
 		end
-		local onHit = PassiveService.RollLaOnHitStatus(userId, usedStep, el, statusApplyOpts)
+		local onHit = PassiveService.RollLaOnHitStatus(userId, usedStep, el, statusApplyOpts, resolved.bladeDefId)
 		local axeMult = if def.family == "Axe" then CombatConfig.AxeGuardStamMult else 1
 
 		local report = DamageService.DealDirect({
@@ -310,12 +330,24 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 		table.insert(hits, report)
 	end
 
-	-- Dual wield off-hand proc (50% damage, no on-hit status — GDD §7)
+	-- Dual wield off-hand (modular 1H frame or legacy 1H item — GDD §7)
 	local loadout = LoadoutService.Get(userId)
-	if loadout.off and #targets > 0 then
-		local offInst = InventoryService.Find(userId, loadout.off)
-		local offDef = offInst and ItemDefs.Get(offInst.defId)
-		local dualKinds = { Weapon1H = true, Wand = true, Scepter = true }
+	local mainResolved = getResolvedMain(userId)
+	local offResolved = LoadoutService.GetResolvedOff(userId)
+	if mainResolved and LoadoutSlots.IsOneHandWeaponKind(mainResolved.kind) and #targets > 0 then
+		local offDef: any = nil
+		local offElement = el
+		if offResolved and offResolved.complete and LoadoutSlots.IsOneHandWeaponKind(offResolved.kind) then
+			offDef = WeaponResolver.AsItemDef(offResolved)
+			offElement = offResolved.element or el
+		else
+			local offInst = loadout.off and InventoryService.Find(userId, loadout.off)
+			offDef = offInst and ItemDefs.Get(offInst.defId)
+			if offDef then
+				offElement = offDef.element or el
+			end
+		end
+		local dualKinds = LoadoutSlots.OneHandWeaponKinds
 		if offDef and dualKinds[offDef.kind] then
 			local offBase = (offDef.baseDamage or CombatConfig.DefaultWeaponBase) * CombatConfig.OffHandDamageMult
 			local offScale = scaling(userId, offDef)
@@ -325,8 +357,8 @@ function LightAttackService.Swing(player: Player, lookVector: Vector3?, aimPosit
 					target = target,
 					weaponBase = offBase,
 					scalingStat = offScale,
-					atkElement = offDef.element or el,
-					comboStep = usedStep,
+					atkElement = offElement,
+					comboStep = 1,
 					familyPerkMult = 1,
 					backstabMult = 1,
 					axeGuardMult = 1,

@@ -12,6 +12,8 @@ local CombatConfig = {
 	KVitRes = 0.25,
 	KDr = 0.1,
 	DrCapPvp = 70,
+	KRes = 0.1,
+	ResCapPvp = 70,
 
 	KDexAs = 0.0035,
 	AsCap = 1.45,
@@ -109,6 +111,7 @@ local CombatConfig = {
 
 	DummyMaxHp = 720,
 	DummyDefence = 80, -- mid chest-ish for matchup/DR feel
+	DummyResist = 20,
 	DummyName = "Training Dummy",
 	DummySpawn = Vector3.new(8, 3, -12),
 	DummySpawnSpread = 4.5,

@@ -111,15 +111,45 @@ end
 
 function InventoryService.ReplaceBag(userId: number, items: { ItemInstance })
 	bags[userId] = {}
+	local skipped = 0
 	for _, item in items do
 		if ItemDefs.Get(item.defId) then
 			table.insert(ensureBag(userId), cloneInstance(item))
+		else
+			skipped += 1
 		end
+	end
+	if skipped > 0 then
+		warn(`[Inventory] ReplaceBag skipped {skipped} unknown defId(s) for user {userId}`)
 	end
 end
 
 function InventoryService.Clear(userId: number)
 	bags[userId] = nil
+end
+
+function InventoryService.ReleaseFrameParts(userId: number, frameUuid: string)
+	local frame = InventoryService.FindRaw(userId, frameUuid)
+	if not frame or frame.defId ~= "weapon_frame" then
+		return
+	end
+	local parts = frame.parts
+	if parts then
+		for _, partUuid in { parts.handle, parts.blade, parts.pommel } do
+			if partUuid then
+				local part = InventoryService.FindRaw(userId, partUuid)
+				if part then
+					part.installedIn = nil
+				end
+			end
+		end
+	end
+	if frame.gemUuid then
+		local gem = InventoryService.FindRaw(userId, frame.gemUuid)
+		if gem then
+			gem.installedIn = nil
+		end
+	end
 end
 
 function InventoryService.RemoveItem(userId: number, uuid: string): boolean

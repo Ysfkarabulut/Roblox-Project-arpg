@@ -10,6 +10,7 @@ local PassiveDefs = require(script.Parent.Parent.Config.PassiveDefs)
 local ArmorAbilityDefs = require(script.Parent.Parent.Config.ArmorAbilityDefs)
 local FocusAbilityDefs = require(script.Parent.Parent.Config.FocusAbilityDefs)
 local UpgradeDefs = require(script.Parent.Parent.Config.UpgradeDefs)
+local InspectHints = require(script.Parent.InspectHints)
 
 local ItemTooltip = {}
 
@@ -19,6 +20,7 @@ export type TooltipContext = {
 	itemData: any?,
 	resolvedMain: any?,
 	isEquippedMain: boolean?,
+	derived: any?,
 }
 
 local function line(lines: { string }, text: string?)
@@ -89,7 +91,7 @@ local function weaponBladeLines(lines: { string }, def: any, upgradeLevel: numbe
 	if def.bladeDamageMult then
 		line(lines, `Blade damage mult: ×{string.format("%.2f", def.bladeDamageMult or 1)}`)
 	end
-	if def.familyPerk then
+	if def.familyPerk and def.rarity ~= "Exotic" then
 		line(lines, `Family perk: {def.familyPerk}`)
 	end
 	for _, perkLine in WeaponFamilyConfig.LaPerkLines(def) do
@@ -178,6 +180,12 @@ function ItemTooltip.Build(ctx: TooltipContext): string
 	end
 	line(lines, table.concat(bits, " · "))
 
+	local exoticPerk = InspectHints.ExoticPerkLine(def)
+	if exoticPerk then
+		section(lines, "Exotic Rule")
+		line(lines, exoticPerk)
+	end
+
 	local upgradeLevel = if ctx.itemData and typeof(ctx.itemData.upgradeLevel) == "number"
 		then ctx.itemData.upgradeLevel
 		else 0
@@ -224,6 +232,35 @@ function ItemTooltip.Build(ctx: TooltipContext): string
 	if def.desc then
 		section(lines, "Notes")
 		line(lines, def.desc)
+	end
+
+	local synergyLines = InspectHints.SynergyLines(ctx.derived)
+	if #synergyLines > 0 then
+		section(lines, "Your Build Synergy")
+		for _, sl in synergyLines do
+			line(lines, sl)
+		end
+	end
+
+	local elementHints = InspectHints.ReactionsForElement(def.element)
+	if #elementHints > 0 then
+		section(lines, "Element Reactions")
+		for _, hl in elementHints do
+			line(lines, hl)
+		end
+	elseif ctx.resolvedMain and ctx.resolvedMain.element then
+		local rmHints = InspectHints.ReactionsForElement(ctx.resolvedMain.element)
+		if #rmHints > 0 then
+			section(lines, "Weapon Element Reactions")
+			for _, hl in rmHints do
+				line(lines, hl)
+			end
+		end
+	end
+
+	section(lines, "Reaction Primer")
+	for _, pl in InspectHints.ReactionPrimer(5) do
+		line(lines, pl)
 	end
 
 	if ctx.itemData and ctx.itemData.installedIn then

@@ -101,22 +101,24 @@ function PassiveDefs.LifestealPct(abilityId: string): number?
 	return nil
 end
 
-function PassiveDefs.ApplyStatBonus(bonus: any, abilityId: string)
+function PassiveDefs.ApplyStatBonus(bonus: any, abilityId: string, scale: number?)
 	local def = PassiveDefs.Get(abilityId)
 	if not def or def.category ~= "Stat" then
 		return
 	end
+	local s = scale or 1
 	if def.critChanceFlat then
-		bonus.critChanceFlat += def.critChanceFlat
+		bonus.critChanceFlat += def.critChanceFlat * s
 	end
 	if def.statusPotencyFlat then
-		bonus.statusPotencyFlat += def.statusPotencyFlat
+		bonus.statusPotencyFlat += def.statusPotencyFlat * s
 	end
 	if def.buffPotencyFlat then
-		bonus.buffPotencyFlat += def.buffPotencyFlat
+		bonus.buffPotencyFlat += def.buffPotencyFlat * s
 	end
 	if def.directMult then
-		bonus.directMult *= def.directMult
+		local delta = def.directMult - 1
+		bonus.directMult *= 1 + delta * s
 	end
 end
 

@@ -88,6 +88,7 @@ local function buildSnapshot(userId: number)
 		items = InventoryService.GetItems(userId),
 		loadout = loadout,
 		hotbar = HotbarService.GetBinds(userId),
+		hotbarSource = HotbarService.GetBindSources(userId),
 		actives = HotbarService.GetAvailableActives(userId),
 		passives = PassiveService.GetSummary(userId),
 		stats = StatService.Get(userId),

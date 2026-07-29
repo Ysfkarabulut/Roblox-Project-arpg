@@ -11,6 +11,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local HotbarConfig = require(ReplicatedStorage.Shared.Config.HotbarConfig)
+local ItemDefs = require(ReplicatedStorage.Shared.Config.ItemDefs)
 local AbilityTooltip = require(ReplicatedStorage.Shared.UI.AbilityTooltip)
 local HoverTooltip = require(script.Parent.Parent.UI.HoverTooltip)
 local UiTheme = require(script.Parent.Parent.UI.UiTheme)
@@ -40,12 +41,15 @@ type ActiveInfo = { abilityId: string, name: string, desc: string, sourceUuid: s
 
 local snapshot = {
 	hotbar = {} :: { [number]: string? },
+	hotbarSource = {} :: { [number]: string? },
+	loadout = {} :: { [string]: string? },
 	actives = {} :: { ActiveInfo },
 }
 
 local cdUntil: { [string]: number } = {}
 local cdDuration: { [string]: number } = {}
 local draggingId: string? = nil
+local draggingSource: string? = nil
 local dragGhost: TextLabel? = nil
 
 local gui = UiTheme.ScreenGui({
@@ -189,7 +193,12 @@ local function refreshPool()
 		btn.TextColor3 = C.Text
 		btn.TextXAlignment = Enum.TextXAlignment.Left
 		btn.LayoutOrder = i
-		btn.Text = string.format("  %s\n  %s", a.name, a.desc)
+		btn.Text = string.format(
+			"  %s%s\n  %s",
+			a.name,
+			if slotTagForSource(a.sourceUuid) ~= "" then ` [{slotTagForSource(a.sourceUuid)}]` else "",
+			a.desc
+		)
 		btn.Parent = poolScroll
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, 6)
@@ -205,6 +214,7 @@ local function refreshPool()
 
 		btn.MouseButton1Down:Connect(function()
 			draggingId = a.abilityId
+			draggingSource = a.sourceUuid
 			if dragGhost then
 				dragGhost:Destroy()
 			end
@@ -227,13 +237,40 @@ local function refreshPool()
 	poolScroll.CanvasSize = UDim2.fromOffset(0, poolList.AbsoluteContentSize.Y + 8)
 end
 
+local function slotTagForSource(sourceUuid: string?): string
+	if not sourceUuid then
+		return ""
+	end
+	if snapshot.loadout.off == sourceUuid then
+		return "Off"
+	end
+	if snapshot.loadout.main == sourceUuid then
+		return "Main"
+	end
+	for _, a in snapshot.actives do
+		if a.sourceUuid == sourceUuid then
+			if a.defId == "weapon_frame" then
+				return "Wpn"
+			end
+			local def = ItemDefs.Get(a.defId)
+			if def and def.kind then
+				return string.sub(def.kind, 1, 3)
+			end
+		end
+	end
+	return "Gear"
+end
+
 local function refreshHotbar()
 	for i = 1, HotbarConfig.SlotCount do
 		local id = snapshot.hotbar[i]
+		local src = snapshot.hotbarSource[i]
 		local key = HotbarConfig.Labels[i]
 		if id then
 			local name = abilityNameById[id] or id
-			slotButtons[i].Text = key .. "\n" .. string.sub(name, 1, 8)
+			local tag = slotTagForSource(src)
+			local suffix = if tag ~= "" then `\n[{tag}]` else ""
+			slotButtons[i].Text = key .. "\n" .. string.sub(name, 1, 8) .. suffix
 			slotButtons[i].BackgroundColor3 = Color3.fromRGB(40, 52, 44)
 		else
 			slotButtons[i].Text = key
@@ -274,6 +311,8 @@ local function apply(data: any)
 		return
 	end
 	snapshot.hotbar = data.hotbar or {}
+	snapshot.hotbarSource = data.hotbarSource or {}
+	snapshot.loadout = data.loadout or {}
 	snapshot.actives = data.actives or {}
 	refreshPool()
 	refreshHotbar()
@@ -320,7 +359,9 @@ UserInputService.InputEnded:Connect(function(input)
 		return
 	end
 	local id = draggingId
+	local src = draggingSource
 	draggingId = nil
+	draggingSource = nil
 	if dragGhost then
 		dragGhost:Destroy()
 		dragGhost = nil
@@ -332,7 +373,7 @@ UserInputService.InputEnded:Connect(function(input)
 		local pos = btn.AbsolutePosition
 		local size = btn.AbsoluteSize
 		if mouse.X >= pos.X and mouse.X <= pos.X + size.X and mouse.Y >= pos.Y and mouse.Y <= pos.Y + size.Y then
-			BindAbility:FireServer(id, i)
+			BindAbility:FireServer(id, i, src)
 			return
 		end
 	end

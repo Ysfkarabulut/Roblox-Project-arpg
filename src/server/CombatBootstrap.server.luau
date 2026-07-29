@@ -68,11 +68,12 @@ ReactionResolver.Bind({
 	end,
 })
 
-CastAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, lookVector: Vector3?, aimPosition: Vector3?)
+CastAbility.OnServerEvent:Connect(function(player: Player, abilityId: string, lookVector: Vector3?, aimPosition: Vector3?, sourceUuid: any)
 	if typeof(abilityId) ~= "string" then
 		return
 	end
-	local result = AbilityService.Cast(player, abilityId, lookVector, aimPosition)
+	local src = if typeof(sourceUuid) == "string" then sourceUuid else nil
+	local result = AbilityService.Cast(player, abilityId, lookVector, aimPosition, src)
 	CombatNotify:FireClient(player, result)
 	if result.ok and result.fx then
 		CombatFx:FireAllClients(player.UserId, result.fx, result.hits)

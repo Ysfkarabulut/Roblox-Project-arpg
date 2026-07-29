@@ -44,6 +44,7 @@ export type PlayerProfile = {
 	items: { SavedItem },
 	loadout: { [string]: string? },
 	hotbar: { [string]: string? },
+	hotbarSource: { [string]: string? },
 	stats: { level: number, STR: number, DEX: number, VIT: number, INT: number },
 	xp: number,
 	unspentStatPoints: number,
@@ -79,6 +80,7 @@ local function defaultProfile(): PlayerProfile
 			feets = nil,
 		},
 		hotbar = {},
+		hotbarSource = {},
 		stats = {
 			level = stats.level,
 			STR = stats.STR,
@@ -136,10 +138,15 @@ function PlayerProfileService.Export(userId: number): PlayerProfile
 
 	local lo = LoadoutService.Get(userId)
 	local hb = HotbarService.GetBinds(userId)
+	local hbSrc = HotbarService.GetBindSources(userId)
 	local hotbar: { [string]: string? } = {}
+	local hotbarSource: { [string]: string? } = {}
 	for i = 1, HotbarConfig.SlotCount do
 		if hb[i] then
 			hotbar[tostring(i)] = hb[i]
+		end
+		if hbSrc[i] then
+			hotbarSource[tostring(i)] = hbSrc[i]
 		end
 	end
 
@@ -157,6 +164,7 @@ function PlayerProfileService.Export(userId: number): PlayerProfile
 			feets = lo.feets,
 		},
 		hotbar = hotbar,
+		hotbarSource = hotbarSource,
 		stats = {
 			level = stats.level,
 			STR = stats.STR,
@@ -251,6 +259,27 @@ local function sanitizeProfile(raw: any): PlayerProfile?
 		end
 	end
 
+	for _, item in profile.items do
+		if item.defId == "weapon_frame" and item.parts then
+			for _, partUuid in { item.parts.handle, item.parts.blade, item.parts.pommel } do
+				if partUuid and uuidSet[partUuid] then
+					for _, partItem in profile.items do
+						if partItem.uuid == partUuid then
+							partItem.installedIn = item.uuid
+						end
+					end
+				end
+			end
+			if item.gemUuid and uuidSet[item.gemUuid] then
+				for _, gemItem in profile.items do
+					if gemItem.uuid == item.gemUuid then
+						gemItem.installedIn = item.uuid
+					end
+				end
+			end
+		end
+	end
+
 	if typeof(raw.loadout) == "table" then
 		for _, slotId in LoadoutSlots.Order do
 			local uuid = raw.loadout[slotId]
@@ -265,6 +294,15 @@ local function sanitizeProfile(raw: any): PlayerProfile?
 			local id = raw.hotbar[tostring(i)]
 			if typeof(id) == "string" then
 				profile.hotbar[tostring(i)] = id
+			end
+		end
+	end
+
+	if typeof(raw.hotbarSource) == "table" then
+		for i = 1, HotbarConfig.SlotCount do
+			local src = raw.hotbarSource[tostring(i)]
+			if typeof(src) == "string" then
+				profile.hotbarSource[tostring(i)] = src
 			end
 		end
 	end
@@ -373,10 +411,13 @@ function PlayerProfileService.Import(userId: number, profile: PlayerProfile)
 	LoadoutService.Import(userId, profile.loadout)
 
 	local binds = {}
+	local sources = {}
 	for i = 1, HotbarConfig.SlotCount do
 		binds[i] = profile.hotbar[tostring(i)]
+		sources[i] = profile.hotbarSource[tostring(i)]
 	end
-	HotbarService.ImportBinds(userId, binds)
+	HotbarService.ImportBinds(userId, binds, sources)
+	HotbarService.Prune(userId)
 
 	StatService.Import(userId, profile.stats, profile.xp, profile.unspentStatPoints)
 	CurrencyService.SetPremium(userId, profile.premium)

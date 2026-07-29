@@ -1,4 +1,4 @@
-﻿# Game Design Document
+# Game Design Document
 
 | | |
 |--|--|
@@ -24,7 +24,7 @@
 3. [Lobby & Modes](#3-lobby--modes)
 4. [Character & Stats](#4-character--stats)
 5. [Loadout & Equipment Slots](#5-loadout--equipment-slots)
-6. [Weapons](#6-weapons)
+6. [Weapons](#6-weapons) — §6.1 Exotic roster
 7. [Off-hand & Weapon Knot](#7-off-hand--weapon-knot)
 8. [Combat Systems](#8-combat-systems)
 9. [Chemistry & Synergies](#9-chemistry--synergies)
@@ -35,6 +35,7 @@
 14. [Playtest Slice (son faz)](#14-playtest-slice-son-faz--ertelendi)
 15. [Glossary](#15-glossary)
 16. [Open Questions (Backlog)](#16-open-questions-backlog)
+17. [Implementasyon günlüğü (kod)](#17-implementasyon-günlüğü-kod-takibi)
 
 ---
 
@@ -233,7 +234,7 @@ Modüler silahta yetenekler **blade**'de (`abilities[]`). Kod doğrulama → `Bl
 - **Tank:** yüksek Defence, düşük Resist — *manuel item tablosu*
 - **Büyücü:** düşük Defence, yüksek Resist — *manuel*
 - **Stat requirement:** `Requires STR 40` vb.
-- **Rarity (v1):** yalnız **Common** (lootbox) ve **Rare** — blade yetenek dağılımı yukarıdaki tabloda kilitli.
+- **Rarity (v1):** **Common**, **Rare**, **Exotic** (lootbox); **BossExclusive** (boss only). Blade yetenek dağılımı yukarıdaki tabloda kilitli (Common/Rare matrix).
 
 ### Element tag (kilit)
 
@@ -313,9 +314,65 @@ Hit Damage = Weapon Base × (1 + ScalingStat × 0.012) × gear × crit
 | 2H Axe | STR | Anti-guard stamina (artmış) | 3 vuruş combo |
 | 2H Mace | STR | Defence Shred (yüksek) | 3 vuruş combo |
 | **Staff** | INT | +Status Potency++; **2H** projectile | **Uzun menzil**, **yüksek hasar** combo |
-| **Exotic** | *değişken* | **Sabit aile perk’i yok** | Item tasarımına göre |
+| **Exotic** | *değişken* | **Kural kıran perk** (`ExoticPerkDefs`) | Item tasarımına göre |
 
-**Exotic:** Özel mekanikli silahlar. Aile perk zorunluluğu yok.
+**Exotic:** Vesteria tarzı **rule-breaking** unique’ler — matrix filler değil. Her exotic’te `familyPerk` (tooltip) + `ExoticPerkDefs.luau` runtime kuralı + benzersiz ability paketi. Tam katalog → **§6.1** · kod eşlemesi → **§17**.
+
+### 6.1 Exotic roster (v1 — 18 eşya, kod kilit)
+
+Kaynak: `src/shared/Config/ExoticContent.luau` · runtime: `ExoticPerkDefs.luau` · loot: `LootTables` **Exotic** tier (düşük ağırlık). Starter / BossExclusive havuzunda **yok**.
+
+#### Blades (12) — `WeaponBlade` → frame’e takılır
+
+| id | EN ad | Aile | DMG× | Exotic kural (kod) | Actives | Passives |
+|----|-------|------|------|-------------------|---------|----------|
+| `b_exotic_hookfang` | Hookfang | Dagger | 1.06 | Dagger backstab ×1.30 | Fan of Knives, Dash | Keen +5% crit |
+| `b_exotic_stormlash` | Stormlash | Wand | 1.05 | +18 Status Potency (+12+6) | Bolt, Bolt+ | Potency +12 |
+| `b_exotic_bulwark_maul` | Bulwark Maul | Mace | 1.08 | Slam+ hit → 2.5s Fortify | Slam+, Fortify | Direct +3% |
+| `b_exotic_riptusk` | Riptusk | Sword 1H | 1.07 | Strike+ · L3 LA signature status | Strike+ | Keen, Status 15% |
+| `b_exotic_needleswarm` | Needleswarm | Dagger | 1.04 | 15% LA status L1/L2 (passive şart değil) | Fan, Dash | Direct +3% |
+| `b_exotic_arcane_lance` | Arcane Lance | Wand | 1.06 | Pierce Bolt **ignores Guard** | Pierce Bolt, Bolt+ | Potency +12 |
+| `b_exotic_sanctum` | Sanctum Scepter | Scepter | 1.03 | Renew → self 2s Fortify | Fortify, Renew | Buff +10 |
+| `b_exotic_skullcracker` | Skullcracker | Axe 1H | 1.09 | Cone → **guard break** | Cone, Slam+ | Direct +3% |
+| `b_exotic_skyreaver` | Skyreaver | Sword 2H | 1.10 | L3 +0.35s hyper armor | Cone+, Burst | Keen +5% |
+| `b_exotic_null_staff` | Null Staff | Staff 2H | 1.05 | Crit → active status **2×** | Bolt+ | Potency, Status 15% |
+| `b_exotic_windstring` | Windstring | Bow | 1.06 | L3 LA **+1 pierce target** | Gale Volley | Keen, Direct +3% |
+| `b_exotic_iron_bolt` | Iron Bolt | Crossbow | 1.08 | Burst → clear reload + Pierce CD | Pierce Bolt, Burst | Keen +5% |
+
+#### Armor (6)
+
+| id | EN ad | Slot | Element | Def/Res | Exotic kural | Abilities |
+|----|-------|------|---------|---------|--------------|-----------|
+| `a_exotic_mirrorplate` | Mirrorplate | Chest | Steel | 88/24 | Thorn 20% + Carapace | Thorn, Carapace |
+| `a_exotic_voidgrasp` | Void Grasp | Hands | Poison | 5/22 | Touch + Stormgrasp +10 Potency | Element Touch, Stormgrasp |
+| `a_exotic_phantom_hood` | Phantom Hood | Head | Wind | 12/18 | Dodge +0.45s hyper armor | Phantom Step, Quiet Step |
+| `a_exotic_lifeweaver_crown` | Lifeweaver Crown | Head | Water | 8/22 | Lifewave overheal → 3s HoT | Tidewave, Lifeweaver Grace |
+| `a_exotic_quakehold_boots` | Quakehold Boots | Feets | Rock | 28/14 | Iron Charge → Root 1.2s | Iron Charge, Ward Step |
+| `a_exotic_warden_plate` | Warden Plate | Chest | Steel | 92/20 | Bulwark + Fortify Aura (ally) | Bulwark, Fortify Aura |
+
+#### Focus (2) — off-hand
+
+| id | EN ad | Element | Exotic kural | Abilities |
+|----|-------|---------|--------------|-----------|
+| `o_exotic_shadow_kit` | Shadow Operative Kit | Poison | Smoke sonrası 4s içinde Grapple → **CD yok** | Smoke, Grapple, Lucky Coin +8% crit |
+| `o_exotic_war_totem` | War Totem Bundle | Rock | Binding Totem + War Sigil +7% direct | Binding Totem, War Sigil |
+
+### 6.2 Exotic runtime (`ExoticPerkDefs.luau`)
+
+Tooltip `familyPerk` metinleri bu tabloyla **eşleşmeli**. Hook noktaları:
+
+| Modül | Ne yapar |
+|-------|----------|
+| `PassiveService` | Stormlash +6 Potency; Needleswarm LA proc |
+| `LightAttackService` | Windstring L3 pierce; Skyreaver hyper armor bonus |
+| `AbilityService` | Slam→Fortify, Renew→Fortify, cone guard break, pierce ignore guard, Null Staff double status, Iron Bolt burst refresh, Lifewave overheal HoT, Charge root, Smoke→Grapple CD |
+| `DodgeService` | Phantom Hood dodge hyper armor trail |
+| `DamageService` | `ignoreGuard` flag |
+| `GuardService` | `ForceBreak` |
+
+Aile perk’leri (Measured Strike, backstab vb.) exotic blade’lerde **family** üzerinden hâlâ geçerli; exotic kural **ek** katman.
+
+**Eski satır (özet):** Özel mekanikli silahlar — sabit matrix aile perk zorunluluğu yok; her exotic kendi `familyPerk` + ability bundle taşır.
 
 ### INT silah profilleri (main-hand — kilit)
 
@@ -598,7 +655,7 @@ Reaksiyonları **doğrudan güçlendirmez**.
 - Stat requirement ile erken birikim engeli
 - **Trade sistemi** — oyuncular arası eşya takası (**kilit yön**)
 - **Craft yok** (v1) — ileride değerlendirilmez; özelleştirme **+ basma / rün** ile
-- İçerik roster (silah × element, zırh setleri, Focus, off-hand) → **en son** tasarlanacak (`§14`)
+- İçerik roster: matrix 48 blade + **18 Exotic** (`GDD.md` §6.1) · boss/devam eden zırh/focus genişletme
 
 ### XP (kilit yön)
 
@@ -634,10 +691,16 @@ PvE kill ──şans──▶ Gacha Box
          └──şans──▶ Boss-exclusive item (bu boss only, yüksek rarity)
 ```
 
-### Rarity
+### Rarity (implementasyon v1)
 
-- Tier sistemi eklenecek (*Common → … → Legendary* — tablo **TBD**)
-- Boss-exclusive ve yüksek + seviyeleri **nadir** tutulur
+| Tier | Loot (Gacha) | Not |
+|------|----------------|-----|
+| **Common** | Handle, pommel, gem | 48-blade matrix **starter**; gacha blade yok |
+| **Rare** | Blade, armor | Matrix rare varyantlar |
+| **Exotic** | Blade, armor, focus | 18 rule-breaking unique (`§6.1`); düşük ağırlık |
+| **BossExclusive** | Boss box only | Gacha’da **asla** |
+
+Starter grant: Common + Rare; **Exotic** ve BossExclusive hariç (`ItemDefs.StarterDefIds`).
 
 ### + Basma & özelleştirme (kilit yön — craft değil)
 
@@ -785,6 +848,19 @@ Oyuncu ikonu **basılı tutup** hotbar slot’una **sürükler** (drag-drop). Ay
 | Bind kaydı | Karakter / loadout ile kalıcı (*DataStore — sonra*) |
 | Combat | Hotbar’daki aktifler + pasifler (otomatik); Active zorunlu değil |
 
+### Item inspect & chemistry hints (v1 — kod)
+
+Vesteria / DB tarzı zengin tooltip (`GearUI` **I**):
+
+| Katman | Dosya | İçerik |
+|--------|-------|--------|
+| Item tooltip | `ItemTooltip.luau` | Exotic Rule · abilities · assembled frame · **Your Build Synergy** (`derived`) · element reaction hints · reaction primer |
+| Ability tooltip | `AbilityTooltip.luau` | Combat spec + status → reaksiyon ipucu |
+| Hint helper | `InspectHints.luau` | Synergy band metni · `ReactionTable` özeti |
+| Stats panel | `GearUI` | SYNERGY band + perk + **REACTIONS** cheat sheet (4 satır) |
+
+Hotbar bind: her slot `abilityId` + **`sourceUuid`** (hangi loadout item’tan geldiği) — aynı ability iki item’ta olsa bile doğru kaynak.
+
 ---
 
 ## 14. Playtest Slice (son faz — ertelendi)
@@ -833,6 +909,8 @@ Playtest slice = tüm sistemler bir arada dış test. Şablon: `MVP_CONTENT.md` 
 | **Boss Fight** | İlk PvE; phase boss, 1–3 co-op; ilk boss: **The Eye** |
 | **Dungeon** | İleride PvE; odalar + trash + boss |
 | **TTK** | Time to kill; orta, skill ile uzar |
+| **Exotic** | Rule-breaking unique rarity; `ExoticContent` + `ExoticPerkDefs` |
+| **sourceUuid** | Hotbar slot → hangi inventory item yeteneği cast ediyor |
 
 ---
 
@@ -874,7 +952,7 @@ Playtest slice = tüm sistemler bir arada dış test. Şablon: `MVP_CONTENT.md` 
 - [x] Harmony (x1+x1+x1) → §3.6
 - [x] Unbound (Pure Neutral) → §3.7
 - [x] Duality (x2+x1) → `CHEMISTRY_ENGINE.md` §3.3
-- [ ] Yeni reaksiyonlar (`CHEMISTRY_ENGINE.md` §6 brainstorm)
+- [ ] Yeni reaksiyonlar (`CHEMISTRY_ENGINE.md` §6 brainstorm) — **UI primer mevcut**; yeni çiftler evde backlog (`README` polish §3)
 
 ### Modlar & ranked
 
@@ -893,7 +971,10 @@ Playtest slice = tüm sistemler bir arada dış test. Şablon: `MVP_CONTENT.md` 
 - [x] Trade sistemi — evet (`§10`)
 - [x] Craft yok; + basma / rün / socket (`§10`)
 - [ ] Level cap, XP eğrisi, Gacha drop %
-- [ ] Rarity tablosu
+- [ ] Rarity tablosu — **Exotic tier eklendi** (`§10`); Legendary vb. TBD
+- [x] Exotic roster 18 eşya + runtime perk’ler → `§6.1` · `ExoticPerkDefs.luau`
+- [x] Item inspect tooltip (synergy + reaction hints) → `§13`
+- [x] Hotbar `sourceUuid` bind → `§13`
 - [ ] + basma malzeme, cap, başarı oranı
 - [ ] Monetization detay (fiyat, pass yapısı)
 - [ ] Tutorial akışı
@@ -906,10 +987,44 @@ Playtest slice = tüm sistemler bir arada dış test. Şablon: `MVP_CONTENT.md` 
 
 ---
 
+## 17. Implementasyon günlüğü (kod takibi)
+
+Tasarım sohbeti + combat alpha ile uyumlu. Detaylı sayılar → ilgili `.md` / `*Config.luau`.
+
+### 2026-07 — Modüler silah + exotic + inspect
+
+| Alan | Durum | Kod / belge |
+|------|--------|-------------|
+| WeaponFrame (handle/blade/pommel/gem) | ✅ alpha | `WeaponResolver`, `WeaponAssemblyService`, `LoadoutService` |
+| 48-blade matrix + boss blades | ✅ | `BladeDefs`, `BossContent` |
+| **18 Exotic** (12 blade, 6 armor, 2 focus) | ✅ | `ExoticContent.luau`, `§6.1` |
+| Exotic runtime perk’ler | ✅ | `ExoticPerkDefs.luau` → LA / ability / dodge hook’ları |
+| Dual wield (1H frame off) | ✅ | `LoadoutSlots`, off LA ×0.65, ability ×0.5 |
+| Hotbar `sourceUuid` | ✅ | `HotbarService`, `AbilityService` cast kaynağı |
+| Synergy band UI + reaction primer | ✅ | `InspectHints`, `ItemTooltip`, `GearUI` stats |
+| Combat bugfix pass (CC, fortify, hotbar, pressure) | ✅ | `PassiveService`, `DamagePipeline`, `MatchResetService` |
+| Anim/VFX polish (GPO tempo) | ⏸ evde | `README` polish backlog §2 |
+| Yeni reaksiyon çiftleri | ⏸ evde | `README` polish backlog §3 |
+
+### Kod kök yolları (Rojo `src/`)
+
+```
+shared/Config/   ExoticContent, ExoticPerkDefs, ItemDefs, BladeDefs, ReactionTable
+shared/UI/       ItemTooltip, AbilityTooltip, InspectHints
+shared/Combat/   WeaponResolver, CombatKind, DamagePipeline
+server/Combat/   LightAttackService, AbilityService, PassiveService, DamageService
+server/Inventory/ LoadoutService, InventoryService, WeaponAssemblyService
+server/Hotbar/   HotbarService (sourceUuid per slot)
+client/Inventory/ GearUI, HotbarUI
+```
+
+---
+
 ## Belge geçmişi
 
 | Tarih | Not |
 |-------|-----|
 | 2026-07 | İlk GDD — tasarım sohbeti kilitleri; kod yok |
+| 2026-07 | §6.1 Exotic roster (18) · §17 implementasyon günlüğü · §13 inspect tooltip · §10 Exotic rarity |
 
 **Teknik detay:** Sayısal combat → `COMBAT_STAT_SHEET.md` | Kimya modülü → `CHEMISTRY_ENGINE.md`

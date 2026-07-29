@@ -83,6 +83,9 @@ end)
 local okTooltip, ItemTooltip = pcall(function()
 	return require(ReplicatedStorage.Shared.UI.ItemTooltip)
 end)
+local okInspectHints, InspectHints = pcall(function()
+	return require(ReplicatedStorage.Shared.UI.InspectHints)
+end)
 local okResolver, WeaponResolver = pcall(function()
 	return require(ReplicatedStorage.Shared.Combat.WeaponResolver)
 end)
@@ -197,6 +200,7 @@ local snapshot = {
 		synergyResistBonusPct = 0,
 	},
 	resolvedMain = nil :: any,
+	resolvedOff = nil :: any,
 	premiumCurrency = 0,
 	gemPreserveUnsocketCost = 1,
 	xpProgress = nil :: any,
@@ -421,6 +425,7 @@ end
 
 local selectedUuid: string? = nil
 local selectedAbility: string? = nil
+local selectedAbilitySource: string? = nil
 local open = false
 
 local PRIMARY_COLORS = {
@@ -613,6 +618,22 @@ local function isEquipped(uuid: string): boolean
 	return false
 end
 
+local function offSlotCompatibleForMain(mainKind: string?, offKind: string?): boolean
+	if not mainKind then
+		return true
+	end
+	if mainKind == "Weapon2H" or mainKind == "Staff" then
+		return offKind == nil or offKind == "Knot"
+	end
+	if mainKind == "Bow" or mainKind == "Crossbow" then
+		return offKind == nil or offKind == "Quiver"
+	end
+	if offKind == "Quiver" or offKind == "Knot" then
+		return false
+	end
+	return true
+end
+
 local function suggestSlot(defId: string): string?
 	local def = ItemDefs.Get(defId)
 	if not def then
@@ -637,6 +658,21 @@ local function suggestSlot(defId: string): string?
 	elseif kind == "Shield" or kind == "Focus" or kind == "Knot" or kind == "Quiver" then
 		return "off"
 	elseif kind == "WeaponFrame" then
+		if snapshot.loadout.main and snapshot.loadout.main ~= selectedUuid then
+			local resolved = nil
+			for _, item in snapshot.items do
+				if item.uuid == selectedUuid then
+					resolved = resolveWeaponFrame(item)
+					break
+				end
+			end
+			if resolved and resolved.complete and LoadoutSlots.IsOneHandWeaponKind(resolved.kind) then
+				local mainKind = snapshot.resolvedMain and snapshot.resolvedMain.kind
+				if offSlotCompatibleForMain(mainKind, resolved.kind) then
+					return "off"
+				end
+			end
+		end
 		return "main"
 	end
 	return "main"
@@ -909,6 +945,30 @@ synergyPerkLabel.LayoutOrder = 22
 synergyPerkLabel.Text = ""
 synergyPerkLabel.Parent = statsBody
 
+local reactionHeader = Instance.new("TextLabel")
+reactionHeader.Size = UDim2.new(1, 0, 0, 18)
+reactionHeader.BackgroundTransparency = 1
+reactionHeader.Font = Enum.Font.GothamBold
+reactionHeader.TextSize = 11
+reactionHeader.TextColor3 = COL_MUTED
+reactionHeader.TextXAlignment = Enum.TextXAlignment.Left
+reactionHeader.LayoutOrder = 23
+reactionHeader.Text = "REACTIONS"
+reactionHeader.Parent = statsBody
+
+local reactionHintLabel = Instance.new("TextLabel")
+reactionHintLabel.Size = UDim2.new(1, 0, 0, 72)
+reactionHintLabel.BackgroundTransparency = 1
+reactionHintLabel.Font = Enum.Font.Gotham
+reactionHintLabel.TextSize = 10
+reactionHintLabel.TextColor3 = Color3.fromRGB(150, 165, 185)
+reactionHintLabel.TextXAlignment = Enum.TextXAlignment.Left
+reactionHintLabel.TextYAlignment = Enum.TextYAlignment.Top
+reactionHintLabel.TextWrapped = true
+reactionHintLabel.LayoutOrder = 24
+reactionHintLabel.Text = ""
+reactionHintLabel.Parent = statsBody
+
 local secHeader = Instance.new("TextLabel")
 secHeader.Size = UDim2.new(1, 0, 0, 18)
 secHeader.BackgroundTransparency = 1
@@ -1147,8 +1207,9 @@ for i = 1, HotbarConfig.SlotCount do
 	end)
 	btn.MouseButton1Click:Connect(function()
 		if selectedAbility then
-			BindAbility:FireServer(selectedAbility, i)
+			BindAbility:FireServer(selectedAbility, i, selectedAbilitySource)
 			selectedAbility = nil
+			selectedAbilitySource = nil
 		elseif snapshot.hotbar[i] then
 			UnbindHotbar:FireServer(i)
 		end
@@ -1799,6 +1860,11 @@ local function refreshStats()
 	synergyBandLabel.TextColor3 = bandColor
 	synergyPerkLabel.Text = (d and d.synergyPerk) or ""
 	synergyPerkLabel.TextColor3 = if band == "None" then COL_MUTED else Color3.fromRGB(170, 175, 190)
+	if okInspectHints and InspectHints then
+		reactionHintLabel.Text = table.concat(InspectHints.ReactionPrimer(4), "\n")
+	else
+		reactionHintLabel.Text = "Wet + Ignite → Vaporize · FIFO apply order"
+	end
 	local secs = secondaryFromStats()
 	for i, row in secondaryLabels do
 		local entry = secs[i]
@@ -1826,6 +1892,8 @@ refreshGear = function()
 				local displayName = frameDisplayName(frameItem, resolved)
 				if slotId == "main" and snapshot.resolvedMain and snapshot.resolvedMain.displayName then
 					displayName = shortName(snapshot.resolvedMain.displayName, 10)
+				elseif slotId == "off" and snapshot.resolvedOff and snapshot.resolvedOff.displayName then
+					displayName = shortName(snapshot.resolvedOff.displayName, 10)
 				elseif frameItem and frameItem.defId == "weapon_frame" then
 					displayName = shortName(displayName, 10)
 				else
@@ -1906,6 +1974,7 @@ refreshDetail = function()
 		itemData = itemData,
 		resolvedMain = tipResolved,
 		isEquippedMain = isMainEquipped,
+		derived = snapshot.derived,
 	})
 
 	if isFrame and itemData and itemData.parts then
@@ -1995,7 +2064,7 @@ refreshSkills = function()
 	for i, a in snapshot.actives do
 		local chip = Instance.new("TextButton")
 		chip.Size = UDim2.fromOffset(100, 22)
-		chip.BackgroundColor3 = if selectedAbility == a.abilityId then COL_SLOT_SEL else COL_SLOT
+		chip.BackgroundColor3 = if selectedAbility == a.abilityId and selectedAbilitySource == a.sourceUuid then COL_SLOT_SEL else COL_SLOT
 		chip.BorderSizePixel = 0
 		chip.Font = Enum.Font.Gotham
 		chip.TextSize = 10
@@ -2012,7 +2081,13 @@ refreshSkills = function()
 			HoverTooltip.hide()
 		end)
 		chip.MouseButton1Click:Connect(function()
-			selectedAbility = if selectedAbility == a.abilityId then nil else a.abilityId
+			if selectedAbility == a.abilityId and selectedAbilitySource == a.sourceUuid then
+				selectedAbility = nil
+				selectedAbilitySource = nil
+			else
+				selectedAbility = a.abilityId
+				selectedAbilitySource = a.sourceUuid
+			end
 			selectedUuid = nil
 			refreshSkills()
 			refreshInventory()
@@ -2090,6 +2165,7 @@ refreshInventory = function()
 						def = def,
 						itemData = item,
 						resolvedMain = if frameRes and frameRes.complete then frameRes else nil,
+						derived = snapshot.derived,
 					})
 					HoverTooltip.show(title, body, btn)
 				end)
@@ -2136,6 +2212,7 @@ refreshInventory = function()
 					TradeUI.AddSelected(newSelected)
 				end
 				selectedAbility = nil
+				selectedAbilitySource = nil
 				refreshInventory()
 				refreshGear()
 				refreshSkills()
@@ -2189,6 +2266,7 @@ local function applySnapshot(data: any)
 		snapshot.derived = data.derived
 	end
 	snapshot.resolvedMain = data.resolvedMain
+	snapshot.resolvedOff = data.resolvedOff
 	if typeof(data.premiumCurrency) == "number" then
 		snapshot.premiumCurrency = data.premiumCurrency
 	end
@@ -2250,6 +2328,8 @@ local function setOpen(state: boolean)
 		clearPreview()
 		selectedUuid = nil
 		selectedAbility = nil
+		selectedAbilitySource = nil
+		selectedAbilitySource = nil
 		clearForgeAttached()
 	end
 end

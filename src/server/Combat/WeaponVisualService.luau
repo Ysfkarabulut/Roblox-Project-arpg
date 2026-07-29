@@ -8,6 +8,7 @@ local AnimConfig = require(game.ReplicatedStorage.Shared.Config.AnimConfig)
 local WeaponFamilyConfig = require(game.ReplicatedStorage.Shared.Config.WeaponFamilyConfig)
 local WeaponMeshConfig = require(game.ReplicatedStorage.Shared.Config.WeaponMeshConfig)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
+local LoadoutSlots = require(game.ReplicatedStorage.Shared.Config.LoadoutSlots)
 local InventoryService = require(script.Parent.Parent.Inventory.InventoryService)
 local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
 local WeaponResolver = require(game.ReplicatedStorage.Shared.Combat.WeaponResolver)
@@ -726,12 +727,19 @@ function WeaponVisualService.Refresh(player: Player)
 
 	if loadout.off then
 		local inst = InventoryService.Find(userId, loadout.off)
-		local def = inst and ItemDefs.Get(inst.defId)
-		if def and def.kind == "Shield" and left then
-			buildShield(inst.defId, def.element, weaponFolder, left)
-		elseif def and (def.kind == "Weapon1H" or def.kind == "Wand" or def.kind == "Scepter") and left then
-			local fam = WeaponFamilyConfig.Resolve(def)
-			buildWeapon(fam.animPrefix, def.element, weaponFolder, left, inst.defId)
+		if inst and inst.defId == "weapon_frame" and left then
+			local resolvedOff = WeaponAssemblyService.ToResolved(userId, loadout.off)
+			if resolvedOff and resolvedOff.complete and LoadoutSlots.IsOneHandWeaponKind(resolvedOff.kind) then
+				buildModularComposite(resolvedOff, weaponFolder, left)
+			end
+		elseif inst then
+			local def = ItemDefs.Get(inst.defId)
+			if def and def.kind == "Shield" and left then
+				buildShield(inst.defId, def.element, weaponFolder, left)
+			elseif def and (def.kind == "Weapon1H" or def.kind == "Wand" or def.kind == "Scepter") and left then
+				local fam = WeaponFamilyConfig.Resolve(def)
+				buildWeapon(fam.animPrefix, def.element, weaponFolder, left, inst.defId)
+			end
 		end
 	end
 

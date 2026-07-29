@@ -47,6 +47,27 @@ local CATALOG: { [string]: FocusAbilityDef } = {
 		kind = "Active",
 		defaultCooldownSec = 16,
 	},
+	fire_jar_focusactive = {
+		id = "fire_jar_focusactive",
+		name = "Fire Jar",
+		desc = "Lob fire jar · 18 stud · 7 stud radius · Ignite enemies",
+		kind = "Active",
+		defaultCooldownSec = 12,
+	},
+	flash_orb_focusactive = {
+		id = "flash_orb_focusactive",
+		name = "Flash Orb",
+		desc = "Throw orb · 26 stud · Shock on hit",
+		kind = "Active",
+		defaultCooldownSec = 10,
+	},
+	binding_totem_focusactive = {
+		id = "binding_totem_focusactive",
+		name = "Binding Totem",
+		desc = "Plant totem · 16 stud · 6 stud radius · Root enemies",
+		kind = "Active",
+		defaultCooldownSec = 15,
+	},
 	-- Passives (shared passives like lifesteal_passive live in PassiveDefs)
 	spirit_charm_focuspassive = {
 		id = "spirit_charm_focuspassive",

@@ -6,6 +6,7 @@
 local ElementData = require(game.ReplicatedStorage.Shared.Config.ElementData)
 local CombatConfig = require(game.ReplicatedStorage.Shared.Config.CombatConfig)
 local PassiveDefs = require(game.ReplicatedStorage.Shared.Config.PassiveDefs)
+local ExoticPerkDefs = require(game.ReplicatedStorage.Shared.Config.ExoticPerkDefs)
 local SynergyConfig = require(game.ReplicatedStorage.Shared.Config.SynergyConfig)
 local ItemDefs = require(game.ReplicatedStorage.Shared.Config.ItemDefs)
 local LoadoutService = require(script.Parent.Parent.Inventory.LoadoutService)
@@ -13,6 +14,7 @@ local InventoryService = require(script.Parent.Parent.Inventory.InventoryService
 local WeaponAssemblyService = require(script.Parent.Parent.Inventory.WeaponAssemblyService)
 local SynergyService = require(game.ReplicatedStorage.Shared.Combat.SynergyService)
 local StatusService = require(script.Parent.StatusService)
+local CombatPressureService = require(script.Parent.CombatPressureService)
 local DummyService = require(script.Parent.DummyService)
 local BossCombatTargets = require(script.Parent.Parent.Boss.BossCombatTargets)
 local PvpTeamService = require(script.Parent.Parent.Pvp.PvpTeamService)
@@ -93,9 +95,13 @@ local function registerPassive(passiveSet: { [string]: boolean }, abilityId: str
 	passiveSet[abilityId] = true
 end
 
-local function applyPassiveId(bonus: PassiveBonus, passiveSet: { [string]: boolean }, abilityId: string)
+local function applyPassiveId(bonus: PassiveBonus, passiveSet: { [string]: boolean }, abilityId: string, scale: number?)
 	registerPassive(passiveSet, abilityId)
-	PassiveDefs.ApplyStatBonus(bonus, abilityId)
+	local s = scale or 1
+	PassiveDefs.ApplyStatBonus(bonus, abilityId, s)
+	if s < 1 then
+		return
+	end
 	if abilityId == "stormgrasp_armorpassive" then
 		bonus.statusPotencyFlat += 10
 	elseif abilityId == "warbound_armorpassive" then
@@ -114,16 +120,23 @@ local function applyPassiveId(bonus: PassiveBonus, passiveSet: { [string]: boole
 		bonus.critChanceFlat += 8
 	elseif abilityId == "iron_heart_focuspassive" then
 		bonus.buffPotencyFlat += 18
+	elseif string.sub(abilityId, 1, 3) == "mx_" and string.find(abilityId, "_util", 1, true) then
+		bonus.critChanceFlat += 3
 	end
 end
 
-local function collectFromAbilities(abilities: { any }?, bonus: PassiveBonus, passiveSet: { [string]: boolean })
+local function collectFromAbilities(
+	abilities: { any }?,
+	bonus: PassiveBonus,
+	passiveSet: { [string]: boolean },
+	scale: number?
+)
 	if not abilities then
 		return
 	end
 	for _, ab in abilities do
 		if ab.slotType == "Passive" then
-			applyPassiveId(bonus, passiveSet, ab.id)
+			applyPassiveId(bonus, passiveSet, ab.id, scale)
 		end
 	end
 end
@@ -137,6 +150,10 @@ function PassiveService.Refresh(userId: number)
 		local resolved = WeaponAssemblyService.ToResolved(userId, loadout.main)
 		if resolved and resolved.complete then
 			collectFromAbilities(resolved.abilities, bonus, passiveSet)
+			local stormlash = ExoticPerkDefs.GetBladePerk(resolved.bladeDefId)
+			if stormlash and stormlash.potencyBonusFlat then
+				bonus.statusPotencyFlat += stormlash.potencyBonusFlat
+			end
 		end
 	end
 
@@ -144,8 +161,22 @@ function PassiveService.Refresh(userId: number)
 		local uuid = (loadout :: any)[slotId]
 		if uuid then
 			local inst = InventoryService.Find(userId, uuid)
-			local def = inst and ItemDefs.Get(inst.defId)
-			collectFromAbilities(def and def.abilities, bonus, passiveSet)
+			if inst then
+				if slotId == "off" and inst.defId == "weapon_frame" then
+					local resolved = WeaponAssemblyService.ToResolved(userId, uuid)
+					if resolved and resolved.complete then
+						collectFromAbilities(
+							resolved.abilities,
+							bonus,
+							passiveSet,
+							CombatConfig.OffHandAbilityMult
+						)
+					end
+				else
+					local def = ItemDefs.Get(inst.defId)
+					collectFromAbilities(def and def.abilities, bonus, passiveSet)
+				end
+			end
 		end
 	end
 
@@ -155,6 +186,8 @@ function PassiveService.Refresh(userId: number)
 	local resolved = LoadoutService.GetResolvedMain(userId)
 	synergyByUser[userId] = SynergyService.ResolveLoadout(userId, loadout, resolved, function(uuid)
 		return InventoryService.Find(userId, uuid)
+	end, function(uuid)
+		return WeaponAssemblyService.ToResolved(userId, uuid)
 	end)
 end
 
@@ -256,7 +289,8 @@ function PassiveService.RollLaOnHitStatus(
 	userId: number,
 	comboStep: number,
 	element: string,
-	applyOpts: StatusApplyOpts?
+	applyOpts: StatusApplyOpts?,
+	bladeDefId: string?
 ): OnHitStatus?
 	if element == "Neutral" or element == "" then
 		return nil
@@ -278,6 +312,13 @@ function PassiveService.RollLaOnHitStatus(
 		end
 	end
 
+	local exotic = ExoticPerkDefs.GetBladePerk(bladeDefId)
+	if exotic and exotic.laProcChance and comboStep < 3 then
+		if math.random() < exotic.laProcChance then
+			return elementStatus(element)
+		end
+	end
+
 	return nil
 end
 
@@ -287,9 +328,16 @@ function PassiveService.ResolveLaElement(userId: number, gemElement: string, cha
 	if helm and helm.params and typeof(helm.params.charges) == "number" and helm.params.charges > 0 then
 		local el = helm.params.element
 		if typeof(el) == "string" and el ~= "" and el ~= "Neutral" then
-			helm.params.charges -= 1
-			if helm.params.charges <= 0 then
+			local newCharges = helm.params.charges - 1
+			local remain = StatusService.RemainingSeconds(character, "HelmPulse")
+			if newCharges <= 0 then
 				StatusService.Remove(character, "HelmPulse", userId)
+			else
+				StatusService.Apply(character, "HelmPulse", if remain > 0 then remain else 6, {
+					sourceUserId = userId,
+					params = { element = el, charges = newCharges },
+					silentBatch = true,
+				})
 			end
 			return el, true
 		end
@@ -398,7 +446,7 @@ function PassiveService.TryPureCascadeSplash(attacker: Player, primaryTarget: Mo
 			return
 		end
 		if model:GetAttribute("IsCombatDummy") or model.Name == "TrainingDummy" then
-			StatusService.Apply(model, wet.id, wet.duration, {
+			CombatPressureService.TryApplyStatus(model, wet.id, wet.duration, {
 				sourceUserId = attacker.UserId,
 				dps = wet.dps,
 				params = wet.params,
@@ -408,7 +456,7 @@ function PassiveService.TryPureCascadeSplash(attacker: Player, primaryTarget: Mo
 		end
 		local victim = Players:GetPlayerFromCharacter(model)
 		if victim and PvpTeamService.CanDamage(attacker.UserId, victim.UserId) then
-			StatusService.Apply(model, wet.id, wet.duration, {
+			CombatPressureService.TryApplyStatus(model, wet.id, wet.duration, {
 				sourceUserId = attacker.UserId,
 				dps = wet.dps,
 				params = wet.params,
@@ -416,7 +464,7 @@ function PassiveService.TryPureCascadeSplash(attacker: Player, primaryTarget: Mo
 			return
 		end
 		if model:GetAttribute("IsBoss") or model:GetAttribute("IsBossAdd") or model:GetAttribute("IsPvpOpponent") then
-			StatusService.Apply(model, wet.id, wet.duration, {
+			CombatPressureService.TryApplyStatus(model, wet.id, wet.duration, {
 				sourceUserId = attacker.UserId,
 				dps = wet.dps,
 				params = wet.params,
